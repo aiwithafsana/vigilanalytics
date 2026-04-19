@@ -1,0 +1,98 @@
+# ── Secrets — never commit these ─────────────────────────────────────────────
+**/.env
+**/.env.local
+**/.env.production
+**/.env.staging
+**/.env.*.local
+!**/.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.prof
+
+# ── Node / Next.js ────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# ── ML data & models (large files — use DVC or S3) ───────────────────────────
+ml/data/raw/
+ml/data/processed/
+ml/models/
+ml/outputs/
+*.parquet
+*.joblib
+*.pkl
+*.h5
+*.pt
+*.onnx
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.sqlite3
+*.db
+db/dumps/
+db/backups/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+/tmp/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# (Dockerfiles are committed; only ignore local overrides)
+docker-compose.override.yml
+
+# ── Alembic ───────────────────────────────────────────────────────────────────
+# Migration files ARE committed — only ignore temp files
+*.pyc
+
+# ── Infra / Terraform ─────────────────────────────────────────────────────────
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/*.tfvars
+!infra/*.tfvars.example
+
+# ── Uploads & generated files ─────────────────────────────────────────────────
+/tmp/vigil-documents/
+backend/uploads/
