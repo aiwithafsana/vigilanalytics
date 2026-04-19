@@ -34,6 +34,30 @@ BATCH_SIZE = 2_000
 TOP_N = 2_000       # providers to include in the network
 SEED = 42
 
+# ── Exempt entity specialties ─────────────────────────────────────────────────
+# High-volume legitimate referral destinations should never be flagged as
+# suspicious network participants regardless of their risk score.  Labs and
+# imaging centers structurally receive many referrals — that is their purpose.
+_EXEMPT_SPECIALTIES: frozenset[str] = frozenset({
+    "clinical laboratory",
+    "independent laboratory",
+    "pathology",
+    "clinical pathology",
+    "anatomic pathology",
+    "diagnostic radiology",
+    "radiology",
+    "interventional radiology",
+    "nuclear medicine",
+    "radiation oncology",
+    "durable medical equipment",
+    "home health",
+    "skilled nursing facility",
+    "hospice",
+    "ambulance",
+    "ambulatory surgical center",
+    "pharmacy",
+})
+
 
 def _conn():
     return psycopg2.connect(DATABASE_URL)
@@ -44,9 +68,20 @@ def generate_edges(df: pd.DataFrame, rng: np.random.Generator) -> list[dict]:
     For each provider, connect them to 2-6 others in the same state.
     Weight connection probability by risk_score so high-risk providers
     cluster together.
+
+    Exempt entity rule: edges where either endpoint is a high-volume legitimate
+    facility (lab, imaging, DME, etc.) are never flagged as_suspicious, regardless
+    of the providers' risk scores.  These specialties structurally receive many
+    referrals — that is their clinical role, not evidence of collusion.
     """
     edges = []
     seen = set()
+
+    # Pre-build a lookup from npi → specialty for fast exempt checks
+    npi_specialty: dict[str, str] = dict(zip(df["npi"].astype(str), df["specialty"]))
+
+    # Suspicious threshold computed once over the full cohort
+    suspicious_threshold = float(df["risk_score"].quantile(0.80)) if "risk_score" in df.columns else 90.0
 
     by_state = df.groupby("state")
 
@@ -61,15 +96,16 @@ def generate_edges(df: pd.DataFrame, rng: np.random.Generator) -> list[dict]:
         weights = weights / weights.sum()
 
         for i, row in group.iterrows():
-            npi = row["npi"]
+            npi = str(row["npi"])
             risk = row["risk_score"] or 0
+            source_specialty = (row.get("specialty") or "").strip().lower()
             # Higher-risk providers get more connections (3–8)
             n_connections = int(3 + min(5, risk / 20))
             n_connections = min(n_connections, len(npis) - 1)
 
             # Sample targets (weighted by risk — fraudsters refer to fraudsters)
-            candidates = npis[npis != npi]
-            cand_weights = weights[npis != npi]
+            candidates = npis[npis != row["npi"]]
+            cand_weights = weights[npis != row["npi"]]
             cand_weights = cand_weights / cand_weights.sum()
 
             targets = rng.choice(
@@ -79,26 +115,37 @@ def generate_edges(df: pd.DataFrame, rng: np.random.Generator) -> list[dict]:
                 p=cand_weights,
             )
 
-            for target_npi in targets:
+            for target_npi_raw in targets:
+                target_npi = str(target_npi_raw)
                 key = tuple(sorted([npi, target_npi]))
                 if key in seen:
                     continue
                 seen.add(key)
 
-                target_risk = group.loc[group["npi"] == target_npi, "risk_score"]
-                target_risk_val = float(target_risk.values[0]) if len(target_risk) else 0.0
+                target_row = group.loc[group["npi"] == target_npi_raw]
+                target_risk_val = float(target_row["risk_score"].values[0]) if len(target_row) else 0.0
+                target_specialty = npi_specialty.get(target_npi, "")
 
                 referral_count = int(rng.integers(5, 120))
                 shared_patients = int(referral_count * rng.uniform(0.4, 0.9))
                 total_payment = round(float(shared_patients * rng.uniform(800, 4500)), 2)
                 referral_pct = round(float(rng.uniform(5, 45)), 2)
-                # Suspicious when both are in the top 20% of this high-risk cohort
-                suspicious_threshold = float(df["risk_score"].quantile(0.80)) if "risk_score" in df.columns else 90.0
-                is_suspicious = (risk >= suspicious_threshold and target_risk_val >= suspicious_threshold)
+
+                # Only flag as suspicious when:
+                # 1. Both providers are high-risk (top 20% of this cohort), AND
+                # 2. Neither is a high-volume legitimate facility type
+                source_exempt = source_specialty in _EXEMPT_SPECIALTIES
+                target_exempt = target_specialty in _EXEMPT_SPECIALTIES
+                is_suspicious = (
+                    not source_exempt
+                    and not target_exempt
+                    and risk >= suspicious_threshold
+                    and target_risk_val >= suspicious_threshold
+                )
 
                 edges.append({
-                    "source_npi": str(npi),
-                    "target_npi": str(target_npi),
+                    "source_npi": npi,
+                    "target_npi": target_npi,
                     "referral_count": referral_count,
                     "shared_patients": shared_patients,
                     "total_payment": total_payment,
@@ -115,6 +162,7 @@ def run():
     # Load scored providers
     df = pd.read_parquet(PROC_DIR / "scored_with_flags.parquet")
     df = df[["npi", "state", "specialty", "risk_score"]].copy()
+    df["specialty"] = df["specialty"].fillna("").str.strip().str.lower()
     df["risk_score"] = pd.to_numeric(df["risk_score"], errors="coerce").fillna(0)
 
     # Take top N by risk
