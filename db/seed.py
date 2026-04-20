@@ -30,12 +30,15 @@ DEMO_PROVIDERS = [
         "billing_entropy": 0.3120, "em_upcoding_ratio": 0.890,
         "risk_score": 97.2, "xgboost_score": 0.9821, "isolation_score": 0.9234, "autoencoder_score": 0.8876,
         "flags": [
-            {"type": "billing_volume", "severity": "critical",
-             "text": "Total Medicare payments 7.8x above specialty peer median ($4.85M vs $620K)"},
-            {"type": "service_pattern", "severity": "critical",
-             "text": "Service volume 6.9x above peer median — possible phantom billing"},
-            {"type": "em_upcoding", "severity": "high",
-             "text": "E&M upcoding ratio 0.89 — 89% of visits coded at highest complexity level"},
+            {
+                "type": "leie_exclusion",
+                "severity": "critical",
+                "text": (
+                    "Provider appears on the OIG LEIE exclusion list. "
+                    "Medicare billing by an excluded provider constitutes a per-claim "
+                    "violation of the False Claims Act (31 U.S.C. § 3729)."
+                ),
+            },
         ],
         "is_excluded": True, "leie_date": "2019-03-15", "leie_reason": "Patient Abuse",
         "data_year": 2022,
@@ -52,9 +55,9 @@ DEMO_PROVIDERS = [
         "risk_score": 91.8, "xgboost_score": 0.9412, "isolation_score": 0.8901, "autoencoder_score": 0.8654,
         "flags": [
             {"type": "billing_volume", "severity": "critical",
-             "text": "Total payments 4.4x above pain management peer median"},
+             "text": "Total Medicare payments 4.4× above specialty peer median ($3.92M vs $890K median)."},
             {"type": "cost_per_patient", "severity": "high",
-             "text": "Payment per beneficiary $3,161 vs peer median $1,589"},
+             "text": "Payment per beneficiary $3,161 is 2.0× above peer median ($1,589)."},
         ],
         "is_excluded": False, "data_year": 2022,
     },
