@@ -319,13 +319,22 @@ export default function ProvidersPage() {
                   <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{p.city}, {p.state}</td>
                   <td className="px-4 py-3 text-slate-300 font-mono text-xs">{fmt(p.total_payment)}</td>
                   <td className="px-4 py-3">
-                    {p.flag_count != null && p.flag_count > 0 ? (
-                      <span className="text-xs font-mono text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded">
-                        {p.flag_count} signal{p.flag_count !== 1 ? "s" : ""}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-700">—</span>
-                    )}
+                    {(() => {
+                      const displayCount = (p.flag_count ?? 0) > 0
+                        ? p.flag_count
+                        : (p.flags?.length ?? 0);
+                      return p.is_excluded ? (
+                        <span className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded">
+                          LEIE excluded
+                        </span>
+                      ) : displayCount > 0 ? (
+                        <span className="text-xs font-mono text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded">
+                          {displayCount} signal{displayCount !== 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-700">—</span>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
