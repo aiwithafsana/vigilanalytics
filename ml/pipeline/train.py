@@ -50,11 +50,14 @@ def _load_data() -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
 
 def train_isolation_forest(X: np.ndarray) -> Pipeline:
     print("  [train] Isolation Forest…")
+    # contamination=0.02 (2%) — was 0.05 (5%) which was too aggressive.
+    # CMS estimates ~1–3% of Medicare spending is fraudulent; 5% generates
+    # far too many anomaly positives and inflates composite risk scores.
     model = Pipeline([
         ("scaler", RobustScaler()),
         ("iso",    IsolationForest(
             n_estimators=200,
-            contamination=0.05,   # ~5% assumed anomaly rate
+            contamination=0.02,   # ~2% assumed anomaly rate
             max_features=0.8,
             random_state=42,
             n_jobs=-1,
@@ -72,21 +75,42 @@ def train_isolation_forest(X: np.ndarray) -> Pipeline:
 def train_xgboost(X: np.ndarray, y: np.ndarray, df: pd.DataFrame) -> xgb.XGBClassifier:
     """
     Semi-supervised approach:
-      - LEIE matches → hard positive (label=1)
-      - Top 2% by payment_zscore AND not LEIE → soft positive (label=1, weight=0.5)
+      - LEIE matches → hard positive (label=1, weight=2.0)
+      - Providers extreme on BOTH payment_zscore AND payment_vs_peer → soft positive
+        (label=1, weight=0.3)
       - Rest → negative (label=0)
+
+    Soft positive criterion requires TWO independent signals simultaneously:
+      - Top 2% payment_zscore (extreme statistical outlier within specialty×state), AND
+      - ≥10× peer median billing (payment_vs_peer ≥ 10)
+    Payment_zscore alone marks legitimate high-volume specialists (academic medical
+    centers, rural sole practitioners, procedure-heavy specialists).  Requiring both
+    signals greatly reduces false positive labeling while still capturing the clearest
+    non-LEIE anomalies.
     """
     print("  [train] XGBoost…")
 
     labels  = y.copy().astype(np.float32)
     weights = np.ones(len(y), dtype=np.float32)
 
-    # Soft positives: top 2% payment_zscore, not already excluded
-    threshold = np.percentile(df["payment_zscore"].fillna(0), 98)
-    soft_pos  = (df["payment_zscore"].fillna(0) >= threshold) & (y == 0)
+    # Soft positives: must be extreme on TWO independent dimensions, not just one
+    zscore_col  = df["payment_zscore"].fillna(0)
+    pv_col      = df["payment_vs_peer"].fillna(1)
+    threshold_z = np.percentile(zscore_col, 98)
+    threshold_pv = 10.0   # billing 10× peer median
+
+    soft_pos = (
+        (zscore_col  >= threshold_z)
+        & (pv_col    >= threshold_pv)
+        & (y == 0)
+    )
+    n_soft = int(soft_pos.sum())
+    print(f"  [train] Soft positives: {n_soft:,} "
+          f"(top-2% zscore AND ≥10× payment_vs_peer, not LEIE)")
+
     labels[soft_pos]  = 1
-    weights[soft_pos] = 0.4   # lower weight than hard positives
-    weights[y == 1]   = 2.0   # up-weight known LEIE matches
+    weights[soft_pos] = 0.3   # more skeptical than before (was 0.4)
+    weights[y == 1]   = 2.0   # hard positives up-weighted
 
     # Class imbalance
     n_pos = labels.sum()
@@ -117,17 +141,34 @@ def train_xgboost(X: np.ndarray, y: np.ndarray, df: pd.DataFrame) -> xgb.XGBClas
 
 # ── Autoencoder (MLP reconstruction) ─────────────────────────────────────────
 
-def train_autoencoder(X: np.ndarray) -> Pipeline:
+def train_autoencoder(X: np.ndarray, df: pd.DataFrame) -> Pipeline:
     """
     Train an MLP to reconstruct normal provider feature vectors.
     High reconstruction error → anomalous.
-    Train only on providers in the bottom 90% of payment_zscore
-    (i.e. likely-normal providers) so the model learns normal patterns.
+
+    IMPORTANT: the scaler is fit on ALL providers so that anomalous providers
+    are still scaled consistently at inference time.  But the MLP itself is
+    trained only on providers in the bottom 90% of payment_zscore so that the
+    model learns what *normal* billing looks like.  When an anomalous provider
+    is passed through at inference, the model will reconstruct it poorly —
+    producing the high reconstruction error that signals an anomaly.
+
+    Training on all providers (the previous bug) let the model learn anomalous
+    patterns too, reducing reconstruction error for outliers and suppressing
+    the anomaly signal we rely on for scoring.
     """
     print("  [train] Autoencoder (MLP)…")
 
-    scaler  = RobustScaler()
+    # Fit scaler on full dataset — ensures consistent scaling at inference
+    scaler   = RobustScaler()
     X_scaled = scaler.fit_transform(X)
+
+    # Filter to likely-normal providers for MLP training
+    zscore   = df["payment_zscore"].fillna(0).values
+    normal_mask = zscore <= np.percentile(zscore, 90)
+    X_normal = X_scaled[normal_mask]
+    print(f"  [train] Autoencoder training on {normal_mask.sum():,} normal providers "
+          f"(bottom 90% payment_zscore; excluded {(~normal_mask).sum():,} outliers)")
 
     ae = MLPRegressor(
         hidden_layer_sizes=(64, 32, 16, 32, 64),
@@ -140,7 +181,7 @@ def train_autoencoder(X: np.ndarray) -> Pipeline:
         n_iter_no_change=10,
         tol=1e-4,
     )
-    ae.fit(X_scaled, X_scaled)
+    ae.fit(X_normal, X_normal)   # train on normal-only; infer on full dataset
 
     path = MODELS_DIR / "autoencoder.joblib"
     joblib.dump({"model": ae, "scaler": scaler}, path)
@@ -155,7 +196,7 @@ def run():
 
     train_isolation_forest(X)
     train_xgboost(X, y, df)
-    train_autoencoder(X)
+    train_autoencoder(X, df)
 
     print("  [train] All models saved.")
 

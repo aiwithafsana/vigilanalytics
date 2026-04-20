@@ -44,6 +44,25 @@ def run(args):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
+        # ── Pre-flight: verify required tables exist ──────────────────────────
+        # Layer 5 depends on billing_records and peer_benchmarks.  These are
+        # populated by load_db.py and the peer benchmark pipeline respectively.
+        # If they're absent we fail loudly rather than silently returning 0 flags.
+        required_tables = ["billing_records", "peer_benchmarks", "fraud_flags", "providers"]
+        cur.execute("""
+            SELECT table_name FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = ANY(%s)
+        """, (required_tables,))
+        found = {row[0] for row in cur.fetchall()}
+        missing = set(required_tables) - found
+        if missing:
+            raise RuntimeError(
+                f"Layer 5 requires database tables that are not present: {sorted(missing)}. "
+                f"Run load_db.py and the peer benchmark pipeline first. "
+                f"Use --dry-run to test without writing."
+            )
+        log.info("Pre-flight: all required tables present (%s)", ", ".join(sorted(required_tables)))
+
         flags = []
 
         # ── YoY Surge Detection ───────────────────────────────────────────────
