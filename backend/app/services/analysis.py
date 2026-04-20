@@ -197,13 +197,29 @@ def _classify_scheme(
 ) -> tuple[str, str]:
     """Return (scheme_name, base_narrative) based on flag patterns and billing data."""
 
+    # LEIE exclusion — check provider attribute directly (most authoritative) and
+    # both flag type variants ("leie_exclusion" from our updated pipeline,
+    # "leie_match" from older pipeline runs).
+    if getattr(provider, "is_excluded", False) or bool(
+        flag_types & {"leie_exclusion", "leie_match"}
+    ):
+        return (
+            "Post-Exclusion Billing — 42 U.S.C. § 1320a-7",
+            "The provider is on the OIG List of Excluded Individuals/Entities (LEIE) and is "
+            "prohibited from receiving any Medicare reimbursement. Every claim submitted after "
+            "the exclusion date is an individual False Claims Act violation (31 U.S.C. § 3729), "
+            "subject to civil penalties of up to $27,894 per claim plus treble damages. This "
+            "category of case is typically referred directly to the U.S. Attorney's Office given "
+            "the clear statutory violation.",
+        )
+
     # Drug injection pattern check: 3+ J-codes + high payment + network flags
     j_code_count = sum(
         1 for r in billing_records if (r.hcpcs_code or "").startswith("J")
     )
     total_payment = float(provider.total_payment or 0)
     has_network_flags = bool(
-        flag_types & {"hub_spoke", "referral_cluster", "referral_cluster"}
+        flag_types & {"hub_spoke", "referral_cluster"}
     )
 
     if j_code_count >= 3 and total_payment > 300_000:
@@ -809,6 +825,16 @@ def generate_analysis(
         billing_anomalies, network_suspects, flags, exposure_from_flags,
     )
 
+    # Model confidence: derived from XGBoost score when available, else from
+    # composite risk score. LEIE providers get 0.97 floor (statutory certainty).
+    xgb = float(getattr(provider, "xgboost_score", None) or 0)
+    if provider.is_excluded:
+        model_confidence = max(xgb, 0.97)
+    elif xgb > 0:
+        model_confidence = round(xgb, 3)
+    else:
+        model_confidence = round(min(score / 100, 0.99), 3)
+
     return {
         "npi": provider.npi,
         "provider_name": name,
@@ -817,8 +843,13 @@ def generate_analysis(
         "risk_score": score,
         "priority": priority,
         "priority_label": priority_label,
+        # Both keys for frontend compatibility (scheme_type = canonical, scheme_label = display)
         "scheme_type": scheme_name,
+        "scheme_label": scheme_name,
+        "model_confidence": model_confidence,
         "narrative": narrative,
+        # Split narrative into paragraphs for frontend rendering
+        "narrative_paragraphs": [p for p in narrative.split("\n\n") if p.strip()],
         "key_findings": key_findings,
         "billing_anomalies": billing_anomalies,
         "network_suspects": network_suspects,
