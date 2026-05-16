@@ -14,7 +14,7 @@
     "d3": "^7.9.0",
     "lucide-react": "^1.7.0",
     "next": "16.2.2",
-    "qrcode.react": "^4.1.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
