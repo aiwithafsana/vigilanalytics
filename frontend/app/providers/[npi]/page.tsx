@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import DataVintageBadge from "@/components/DataVintageBadge";
+import AttestationModal from "@/components/AttestationModal";
+import AuditTrail from "@/components/AuditTrail";
+import ActiveInvestigationBanner from "@/components/ActiveInvestigationBanner";
+import PublicRecordsPanel from "@/components/PublicRecordsPanel";
 import { getProvider, createCase, getProviderPdfUrl, getProviderBilling, getProviderFlags, getProviderAnalysis } from "@/lib/api";
 import { fmt, fmtNum, providerName } from "@/lib/utils";
 import type { ProviderDetail, BillingRecord, FraudFlag, ProviderAnalysis } from "@/types";
@@ -31,6 +36,26 @@ const FLAG_LABELS: Record<string, string> = {
   deceased_patient:  "Deceased Patient Billing",
 };
 
+// ── SHAP feature labels ───────────────────────────────────────────────────────
+
+const SHAP_FEATURE_LABELS: Record<string, string> = {
+  payment_vs_peer:     "Payment vs. Peer",
+  services_vs_peer:    "Services vs. Peer",
+  benes_vs_peer:       "Beneficiaries vs. Peer",
+  payment_zscore:      "Payment Z-Score",
+  billing_entropy:     "Billing Entropy",
+  em_upcoding_ratio:   "E&M Upcoding Ratio",
+  services_per_bene:   "Services / Beneficiary",
+  payment_per_bene:    "Payment / Beneficiary",
+  xgboost_score:       "XGBoost Signal",
+  isolation_score:     "Isolation Forest",
+  autoencoder_score:   "Autoencoder",
+  num_procedure_types: "Procedure Diversity",
+  total_payment:       "Total Billed",
+  total_services:      "Total Services",
+  total_beneficiaries: "Total Beneficiaries",
+};
+
 // ── Place of service ──────────────────────────────────────────────────────────
 
 const POS: Record<string, string> = {
@@ -40,7 +65,22 @@ const POS: Record<string, string> = {
   "O":"Office", "F":"Facility",
 };
 
-type Tab = "overview" | "billing" | "signals" | "analysis";
+// ── LEIE date helper ──────────────────────────────────────────────────────────
+
+function formatLeieDate(raw: string | null): string {
+  if (!raw) return "unknown";
+  // Accept "20190215" (8 digits) or "2019-02-15" (ISO)
+  const digits = raw.replace(/-/g, "");
+  if (digits.length === 8 && /^\d{8}$/.test(digits)) {
+    const d = new Date(`${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    }
+  }
+  return raw;
+}
+
+type Tab = "overview" | "billing" | "signals" | "analysis" | "external";
 
 // ── Peer bar ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +111,92 @@ function PeerBar({ label, value, peer }: { label: string; value: number | null; 
   );
 }
 
+// ── SHAP drivers card ────────────────────────────────────────────────────────
+
+function ShapDriversCard({ shap }: { shap: { top: string[]; values: Record<string, number> } }) {
+  const features = shap.top.slice(0, 6);
+  const absMax = features.reduce((m, f) => Math.max(m, Math.abs(shap.values[f] ?? 0)), 0) || 1;
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
+      <h2 className="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Score Drivers</h2>
+      <p className="text-[11px] text-slate-600 mb-4">
+        Top SHAP features — positive = raises risk, negative = lowers risk
+      </p>
+      {features.map((feat) => {
+        const val = shap.values[feat] ?? 0;
+        const pct = (Math.abs(val) / absMax) * 100;
+        const label = SHAP_FEATURE_LABELS[feat] ?? feat.replace(/_/g, " ");
+        const isNeg = val < 0;
+        return (
+          <div key={feat} className="mb-3 last:mb-0">
+            <div className="flex justify-between items-center text-xs mb-1">
+              <span className="text-slate-400 capitalize">{label}</span>
+              <span className={`font-mono text-[11px] ${isNeg ? "text-green-400" : "text-orange-400"}`}>
+                {isNeg ? "−" : "+"}{Math.abs(val).toFixed(3)}
+              </span>
+            </div>
+            <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${isNeg ? "bg-green-500/60" : "bg-orange-500/80"}`}
+                style={{ width: `${Math.min(pct, 100)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Model score breakdown card ────────────────────────────────────────────────
+
+function ModelBreakdownCard({
+  xgb, iso, ae,
+}: {
+  xgb: number | null; iso: number | null; ae: number | null;
+}) {
+  const models = [
+    { label: "XGBoost Classifier",  score: xgb, weight: 0.50, color: "bg-blue-500"   },
+    { label: "Isolation Forest",     score: iso, weight: 0.30, color: "bg-purple-500" },
+    { label: "Autoencoder Anomaly",  score: ae,  weight: 0.20, color: "bg-teal-500"   },
+  ];
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
+      <h2 className="text-xs uppercase tracking-widest text-slate-500 font-medium mb-1">Model Breakdown</h2>
+      <p className="text-[11px] text-slate-600 mb-4">
+        Composite risk score = 50% XGBoost · 30% Isolation Forest · 20% Autoencoder
+      </p>
+      {models.map(({ label, score, weight, color }) => {
+        const s = score != null ? Number(score) : null;
+        const pct = s != null ? Math.min(s * 100, 100) : 0;
+        const contrib = s != null ? (s * weight * 100).toFixed(1) : null;
+        return (
+          <div key={label} className="mb-4 last:mb-0">
+            <div className="flex justify-between items-center text-xs mb-1.5">
+              <span className="text-slate-400">{label}</span>
+              <span className="font-mono text-slate-300 text-[11px]">
+                {s != null ? `${(s * 100).toFixed(1)}%` : "—"}
+                {contrib != null && (
+                  <span className="text-slate-600 ml-1.5">(→ {contrib} pts)</span>
+                )}
+              </span>
+            </div>
+            <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${color} opacity-80 transition-all`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <div className="flex justify-end mt-0.5">
+              <span className="text-[9px] text-slate-700 font-mono">{(weight * 100).toFixed(0)}% weight</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProviderDetailPage() {
@@ -86,6 +212,8 @@ export default function ProviderDetailPage() {
   const [signalsLoading, setSignalsLoading] = useState(false);
   const [analysis, setAnalysis]       = useState<ProviderAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  // PDF export gates on a methodology attestation modal
+  const [pdfAttestOpen, setPdfAttestOpen] = useState(false);
 
   useEffect(() => {
     getProvider(npi).then(setProvider).catch(console.error).finally(() => setLoading(false));
@@ -112,12 +240,20 @@ export default function ProviderDetailPage() {
     }
   }, [tab, analysis, analysisLoading, npi]);
 
-  async function handleDownloadPdf() {
+  // Export PDF — gated by AttestationModal.  The user clicks the button,
+  // we open the modal; on confirm (attestation recorded), the actual download
+  // fires.  attestation_id is sent as a header so the export endpoint can
+  // optionally verify it (best-effort enforcement; the legal record is
+  // server-side in audit_log regardless).
+  async function performPdfDownload(attestationId: number) {
     if (!provider) return;
     try {
       const token = localStorage.getItem("vigil_token");
       const res = await fetch(getProviderPdfUrl(provider.npi), {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Attestation-Id": String(attestationId),
+        },
       });
       if (!res.ok) throw new Error(`${res.status}`);
       const blob = await res.blob();
@@ -127,6 +263,11 @@ export default function ProviderDetailPage() {
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) { console.error("PDF download failed:", e); }
+  }
+
+  function handleDownloadPdf() {
+    if (!provider) return;
+    setPdfAttestOpen(true);
   }
 
   async function handleCreateCase() {
@@ -196,6 +337,21 @@ export default function ProviderDetailPage() {
         <InvestigationBrief npi={npi} tier={tier} provider={p} />
 
         {/* ── Actions ────────────────────────────────────────────────────── */}
+        {/* Coordination signal — surface any open case on this provider so
+            two analysts don't independently work the same target.  UAT
+            finding #1. */}
+        <ActiveInvestigationBanner npi={p.npi} />
+
+        {/* Data vintage — methodology §8 requires data-as-of date next to any score */}
+        <DataVintageBadge variant="full" className="mb-4" />
+
+        {/* Chain-of-custody audit trail — methodology §10.
+            First-to-view banner is enabled for providers because qui tam
+            attorneys need to see this signal prominently. */}
+        <div className="mb-4">
+          <AuditTrail targetType="provider" targetId={p.npi} highlightFirstView />
+        </div>
+
         <div className="flex gap-2 mb-6 flex-wrap">
           <button
             onClick={handleCreateCase}
@@ -221,7 +377,7 @@ export default function ProviderDetailPage() {
 
         {/* ── Tabs ───────────────────────────────────────────────────────── */}
         <div className="flex gap-0.5 mb-6 border-b border-white/[0.06]">
-          {(["overview", "billing", "signals", "analysis"] as Tab[]).map((t) => (
+          {(["overview", "billing", "signals", "external", "analysis"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -237,6 +393,8 @@ export default function ProviderDetailPage() {
                 ? `Billing${billing ? ` (${billing.length})` : ""}`
                 : t === "analysis"
                 ? "AI Brief"
+                : t === "external"
+                ? "External Records"
                 : "Overview"}
             </button>
           ))}
@@ -277,6 +435,14 @@ export default function ProviderDetailPage() {
               </div>
             </div>
 
+            {/* SHAP Score Drivers — shown when shap_drivers data is available */}
+            {p.shap_drivers && p.shap_drivers.top.length > 0 && (
+              <ShapDriversCard shap={p.shap_drivers} />
+            )}
+
+            {/* Model Score Breakdown — always shown, — for missing values */}
+            <ModelBreakdownCard xgb={p.xgboost_score} iso={p.isolation_score} ae={p.autoencoder_score} />
+
             {/* LEIE status — full width */}
             <div className="lg:col-span-2">
               {p.is_excluded ? (
@@ -288,7 +454,7 @@ export default function ProviderDetailPage() {
                         LEIE Exclusion Confirmed — This provider is barred from Medicare billing
                       </p>
                       <p className="text-xs text-slate-400">
-                        Exclusion date: <span className="font-mono text-slate-300">{p.leie_date ?? "unknown"}</span>
+                        Exclusion date: <span className="font-mono text-slate-300">{formatLeieDate(p.leie_date)}</span>
                         {p.leie_reason && (
                           <> · Reason: <span className="font-mono text-slate-300">{p.leie_reason}</span></>
                         )}
@@ -356,6 +522,23 @@ export default function ProviderDetailPage() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── EXTERNAL RECORDS TAB ────────────────────────────────────────── */}
+        {tab === "external" && (
+          <div className="fade-in">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-slate-100 mb-1">
+                External public-records check
+              </h2>
+              <p className="text-xs text-slate-500">
+                Vigil's Public Records agent cross-references this provider against the NPI Registry,
+                SAM.gov federal exclusion list, OIG enforcement newsroom, and federal court dockets.
+                Each finding links to the original source — verify before relying.
+              </p>
+            </div>
+            <PublicRecordsPanel npi={p.npi} />
           </div>
         )}
 
@@ -461,6 +644,19 @@ export default function ProviderDetailPage() {
           </div>
         )}
       </div>
+
+      <AttestationModal
+        open={pdfAttestOpen}
+        action="pdf_export"
+        targetId={provider.npi}
+        targetType="provider"
+        actionLabel="export this provider's report as PDF"
+        onConfirm={(attId) => {
+          setPdfAttestOpen(false);
+          void performPdfDownload(attId);
+        }}
+        onCancel={() => setPdfAttestOpen(false)}
+      />
     </AppShell>
   );
 }

@@ -1,0 +1,34 @@
+node_modules/
+.next/
+.git/
+.gitignore
+
+# Secrets
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test artefacts
+coverage/
+.nyc_output/
+__tests__/
+*.test.ts
+*.spec.ts
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md

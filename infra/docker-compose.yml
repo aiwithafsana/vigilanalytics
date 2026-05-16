@@ -1,21 +1,25 @@
 services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: vigil
+      POSTGRES_USER:     vigil
       POSTGRES_PASSWORD: vigil
-      POSTGRES_DB: vigil
+      POSTGRES_DB:       vigil
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Expose port for local psql/pgAdmin access — remove in production
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vigil"]
+      test:     ["CMD-SHELL", "pg_isready -U vigil"]
       interval: 5s
-      timeout: 5s
-      retries: 5
+      timeout:  5s
+      retries:  10
 
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
   backend:
     build:
       context: ../backend
@@ -23,31 +27,80 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://vigil:vigil@db:5432/vigil
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      APP_ENV: development
-      CORS_ORIGINS: '["http://localhost:3000"]'
-    ports:
-      - "8000:8000"
+      SECRET_KEY:   ${SECRET_KEY:-change-me-in-production}
+      APP_ENV:      ${APP_ENV:-development}
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:80"]'
+      STORAGE_PATH: /app/documents
+    # entrypoint.sh forwards these args to uvicorn
+    command: --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - ../backend:/app
-      - document_storage:/tmp/vigil-documents
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - ../backend:/app          # live-reload in dev
+      - document_storage:/app/documents
+    # Expose directly for dev convenience; in production route only through nginx
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:     ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')\""]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+      start_period: 30s
 
+  # ── Next.js frontend ─────────────────────────────────────────────────────────
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Expose directly for dev convenience; in production route only through nginx
     ports:
       - "3000:3000"
+
+  # ── Nginx reverse proxy ──────────────────────────────────────────────────────
+  # Routes /api/* → backend, everything else → frontend.
+  # Expose port 80; add TLS termination by editing infra/nginx/nginx.conf.
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"   # uncomment when TLS certs are mounted
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./certs:/etc/letsencrypt:ro   # mount Let's Encrypt certs for TLS
     depends_on:
       - backend
+      - frontend
+
+  # ── ML pipeline (one-shot job, opt-in via --profile ml) ─────────────────────
+  # Usage:
+  #   docker compose --profile ml run --rm ml              # fast path (skip ingest/train)
+  #   docker compose --profile ml run --rm ml --leie-only  # LEIE refresh only
+  #   docker compose --profile ml run --rm ml              # full pipeline (override CMD)
+  ml:
+    profiles: ["ml"]
+    build:
+      context: ../ml
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://vigil:vigil@db:5432/vigil
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ml_data:/ml/data
+      - ml_models:/ml/models
 
 volumes:
   postgres_data:
   document_storage:
+  ml_data:
+  ml_models:

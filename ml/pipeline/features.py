@@ -28,23 +28,38 @@ PROC_DIR = DATA_DIR / "processed"
 MIN_PEER_GROUP_SIZE = 10
 
 # Features used as model inputs (must be finite floats).
-# is_excluded / is_opt_out / months_enrolled come from LEIE + enrollment enrichment.
+# is_opt_out / months_enrolled come from LEIE + enrollment enrichment.
+# NOTE: is_excluded is intentionally excluded from model inputs — it is the
+# known-positive label used for XGBoost training.  Including it causes feature
+# leakage: the model learns "is this person already caught?" rather than "does
+# the billing pattern look anomalous?".  is_excluded is still computed and stored
+# in features.parquet for post-scoring reporting (e.g. volume-specialty adjustment
+# and dashboard display), but never fed to any model.
 FEATURE_COLS = [
     "payment_vs_peer",
     "services_vs_peer",
     "benes_vs_peer",
+    "ppb_vs_peer",              # per-patient cost vs. peer — size-invariant fraud signal
     "payment_zscore",
     "services_per_bene",
     "payment_per_bene_norm",    # log-scaled
+    "payment_per_service_vs_peer",  # per-procedure revenue vs. peers (upcoding signal)
     "total_payment_log",
     "total_services_log",
     "num_procedure_types_norm",
     "billing_entropy",
     "em_upcoding_ratio",
-    "is_excluded",              # binary: 1 = on OIG LEIE list
+    "hotspot_state",            # 1 = high-fraud geography (FL, TX, CA, NY, LA, MI, NJ)
+    "yoy_payment_change",       # normalised 2021→2022 payment change vs. peer YoY trend
     "is_opt_out",               # binary: 1 = opted out of Medicare
     "months_enrolled",          # continuous: months in current enrollment period
+    # NPPES enrichment (populated when nppes_enrichment.parquet is present)
+    "is_sole_proprietor",       # binary: 1 = sole proprietor (NPPES) — over-represented in OIG actions
+    "new_provider_high_volume", # binary: enumerated within 24mo AND payment_vs_peer >= 5
 ]
+
+# States with persistently elevated Medicare fraud rates (OIG enforcement data)
+_FRAUD_HOTSPOT_STATES = {"FL", "TX", "CA", "NY", "LA", "MI", "NJ", "IL", "GA", "MD"}
 
 # Canonical specialty mapping — normalises the 200+ raw NPPES/CMS strings
 # down to a controlled vocabulary so peer groups are large enough to be meaningful.
@@ -61,10 +76,11 @@ _SPECIALTY_MAP: dict[str, str] = {
     "interventional cardiology":             "cardiology",
     "clinical cardiac electrophysiology":    "cardiology",
     # Oncology
-    "hematology/oncology":                   "hematology/oncology",
-    "medical oncology":                      "hematology/oncology",
-    "hematology":                            "hematology/oncology",
-    "gynecologic oncology":                  "hematology/oncology",
+    "hematology/oncology":                   "hematology-oncology",
+    "hematology-oncology":                   "hematology-oncology",
+    "medical oncology":                      "hematology-oncology",
+    "hematology":                            "hematology-oncology",
+    "gynecologic oncology":                  "hematology-oncology",
     # Surgical
     "general surgery":                       "general surgery",
     "orthopedic surgery":                    "orthopedic surgery",
@@ -151,13 +167,26 @@ def _peer_median_with_fallback(
     )
 
 
-def build(providers: pd.DataFrame | None = None) -> pd.DataFrame:
+def build(providers: pd.DataFrame | None = None,
+          out_path: "Path | str | None" = None) -> pd.DataFrame:
+    """Build feature matrix.  out_path overrides the default save location."""
     if providers is None:
         path = PROC_DIR / "providers_aggregated.parquet"
         providers = pd.read_parquet(path)
 
     print(f"  [features] Building features for {len(providers):,} providers…")
     df = providers.copy()
+
+    # --- Join LEIE exclusion flags directly so is_excluded is accurate in features.parquet ---
+    # train.py also does this join, but score.py reads features.parquet directly, so the
+    # flag must be present here for inference-time scoring to work correctly.
+    leie_path = PROC_DIR / "leie.parquet"
+    if leie_path.exists():
+        leie = pd.read_parquet(leie_path)
+        leie_npis = set(leie["npi"].dropna().astype(str).unique())
+        df["is_excluded"] = df["npi"].astype(str).isin(leie_npis).astype(float)
+        n_excl = int(df["is_excluded"].sum())
+        print(f"  [features] LEIE join: {n_excl:,} excluded providers flagged")
 
     # --- Require minimum data quality ---
     df = df[df["total_payment"] > 0]
@@ -228,8 +257,101 @@ def build(providers: pd.DataFrame | None = None) -> pd.DataFrame:
         df["months_enrolled"] = 12.0
     df["months_enrolled"] = df["months_enrolled"].fillna(12.0).clip(lower=0, upper=12).astype(float)
 
+    # --- NPPES enrichment ----------------------------------------------------
+    # When ingest_nppes.py has been run, nppes_enrichment.parquet is present
+    # with per-NPI enumeration date and sole-proprietor flag.  Join it here.
+    nppes_path = PROC_DIR / "nppes_enrichment.parquet"
+    if nppes_path.exists():
+        try:
+            nppes = pd.read_parquet(nppes_path, columns=[
+                "npi", "months_since_enumeration", "is_sole_proprietor",
+            ])
+            nppes["npi"] = nppes["npi"].astype(str)
+            df["npi"] = df["npi"].astype(str)
+            df = df.merge(nppes, on="npi", how="left")
+            df["is_sole_proprietor"] = df["is_sole_proprietor"].fillna(0).astype(int)
+            df["months_since_enumeration"] = df["months_since_enumeration"].fillna(
+                df["months_since_enumeration"].median(),
+            ).astype(float)
+            n_enriched = int((df["months_since_enumeration"] > 0).sum())
+            print(f"  [features] NPPES join: enriched {n_enriched:,} providers")
+        except Exception as e:
+            print(f"  [features] NPPES join failed ({e}) — using defaults")
+            df["is_sole_proprietor"] = 0
+            df["months_since_enumeration"] = 120.0   # 10y default
+    else:
+        df["is_sole_proprietor"] = 0
+        df["months_since_enumeration"] = 120.0       # 10y default (long-established)
+
+    # new_provider_high_volume: ≤24 months since NPI enumeration AND
+    # billing ≥5× peer median.  New providers running at 5× their specialty's
+    # median in their first 2 years is one of the strongest fraud signals
+    # OIG enforcement actions point to.
+    pv_col = df.get("payment_vs_peer", pd.Series(1.0, index=df.index))
+    df["new_provider_high_volume"] = (
+        (df["months_since_enumeration"] <= 24) & (pv_col >= 5.0)
+    ).astype(int)
+
+    # --- Per-patient cost vs. peer (size-invariant anomaly signal) ---
+    # payment_vs_peer compares *totals*, penalising large chains for being large.
+    # ppb_vs_peer compares cost *per beneficiary*, which is scale-independent and
+    # is the correct fraud signal for volume-intensive specialties (labs, DME, ambulance).
+    df["ppb_vs_peer"] = _safe_div(df["payment_per_bene"], df["peer_median_ppb"], fill=1.0)
+
+    # --- Per-service payment vs. peer (upcoding signal) ---
+    # Providers who receive higher Medicare payment *per claim* than specialty peers
+    # may be upcoding (billing a higher complexity/cost code than warranted).
+    # Distinct from ppb_vs_peer: captures per-claim inflation, not per-patient.
+    df["payment_per_service"] = _safe_div(df["total_payment"], df["total_services"])
+    df["peer_median_pps"] = _peer_median_with_fallback(
+        df, "payment_per_service", "_peer_group_fine", "_peer_group_coarse"
+    )
+    df["payment_per_service_vs_peer"] = _safe_div(
+        df["payment_per_service"], df["peer_median_pps"], fill=1.0
+    ).clip(upper=50.0)
+
+    # --- Geographic fraud hotspot flag ---
+    # OIG enforcement actions and CMS Zone Program Integrity Contractor data
+    # consistently show elevated fraud rates in these states.
+    df["hotspot_state"] = (
+        df["state"].str.strip().str.upper().isin(_FRAUD_HOTSPOT_STATES)
+    ).astype(float)
+
+    # --- Year-over-year payment change (2021→2022) ---
+    # A sudden billing spike — large increase vs. the provider's specialty peers —
+    # is one of the strongest temporal fraud signals. Computed only when prior-year
+    # aggregated data is available (features_2021 or providers_aggregated_2021).
+    # Providers with no prior-year record get 0.0 (no observed change).
+    yoy_path = PROC_DIR / "providers_aggregated_2021.parquet"
+    if yoy_path.exists() and out_path != yoy_path:
+        try:
+            prior = pd.read_parquet(yoy_path, columns=["npi", "total_payment"])
+            prior = prior.rename(columns={"total_payment": "_pay_2021"})
+            prior["npi"] = prior["npi"].astype(str)
+            df = df.merge(prior, on="npi", how="left")
+
+            # Raw YoY % change (clamped to avoid log issues)
+            df["_yoy_raw"] = _safe_div(
+                df["total_payment"] - df["_pay_2021"], df["_pay_2021"].clip(lower=1)
+            ).clip(-1.0, 10.0).fillna(0.0)
+
+            # Peer-median YoY change — removes specialty-wide trends
+            df["_peer_yoy_median"] = df.groupby("_peer_group_coarse")["_yoy_raw"].transform("median")
+            df["yoy_payment_change"] = (df["_yoy_raw"] - df["_peer_yoy_median"]).fillna(0.0).clip(-1.0, 5.0)
+            df = df.drop(columns=["_pay_2021", "_yoy_raw", "_peer_yoy_median"], errors="ignore")
+
+            n_yoy = int(df["yoy_payment_change"].ne(0).sum())
+            print(f"  [features] YoY payment change: computed for {n_yoy:,} providers "
+                  f"with 2021 records")
+        except Exception as e:
+            print(f"  [features] YoY computation failed ({e}) — filling 0.0")
+            df["yoy_payment_change"] = 0.0
+    else:
+        df["yoy_payment_change"] = 0.0
+
     # --- Clip extreme ratios (higher ceiling to preserve true outliers) ---
-    for col in ["payment_vs_peer", "services_vs_peer", "benes_vs_peer"]:
+    for col in ["payment_vs_peer", "services_vs_peer", "benes_vs_peer", "ppb_vs_peer",
+                "payment_per_service_vs_peer"]:
         df[col] = df[col].clip(upper=100.0)  # was 50.0 — raised to preserve extreme outliers
 
     df["payment_zscore"] = df["payment_zscore"].clip(-10, 50)
@@ -238,7 +360,9 @@ def build(providers: pd.DataFrame | None = None) -> pd.DataFrame:
     df = df.drop(columns=["_peer_group_fine", "_peer_group_coarse"], errors="ignore")
 
     print(f"  [features] Done. Feature columns: {FEATURE_COLS}")
-    out_path = PROC_DIR / "features.parquet"
+    if out_path is None:
+        out_path = PROC_DIR / "features.parquet"
+    out_path = Path(out_path)
     df.to_parquet(out_path, index=False)
     print(f"  [features] Saved → {out_path}")
     return df

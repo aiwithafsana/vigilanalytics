@@ -4,8 +4,10 @@ import io
 from functools import partial
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,7 @@ from app.services.evidence import generate_provider_pdf
 from app.services.analysis import generate_analysis
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 # Valid US states + DC only — excludes territories (PR, GU, VI, AS, MP),
 # military addresses (AA, AE, AP), and garbage codes (XX, ZZ)
@@ -158,7 +161,9 @@ async def list_providers(
 
 
 @router.get("/export/csv")
+@limiter.limit("10/minute")        # bulk export — limit to prevent data harvesting
 async def export_providers_csv(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     state: str | None = None,
@@ -203,6 +208,7 @@ async def export_providers_csv(
         target_type="provider",
         details={"count": len(providers), "filters": {"state": state, "min_risk": min_risk}},
     ))
+    await db.flush()
 
     output.seek(0)
     return StreamingResponse(
@@ -307,6 +313,7 @@ async def get_provider(
         target_type="provider",
         target_id=npi,
     ))
+    await db.flush()
 
     return ProviderDetail.model_validate(provider)
 
@@ -342,6 +349,16 @@ async def get_provider_billing(
         query = query.where(BillingRecord.year == year)
 
     rows = (await db.execute(query)).scalars().all()
+
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="view_provider_billing",
+        target_type="provider",
+        target_id=npi,
+        details={"year": year, "record_count": len(rows)},
+    ))
+    await db.flush()
+
     return [BillingRecordOut.model_validate(r) for r in rows]
 
 
@@ -376,11 +393,66 @@ async def get_provider_flags(
         query = query.where(FraudFlag.is_active == True)  # noqa: E712
 
     rows = (await db.execute(query)).scalars().all()
+
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="view_provider_flags",
+        target_type="provider",
+        target_id=npi,
+        details={"active_only": active_only, "flag_count": len(rows)},
+    ))
+    await db.flush()
+
     return [FraudFlagOut.model_validate(r) for r in rows]
 
 
+@router.get("/{npi}/active-cases", summary="List open cases on this provider")
+async def get_provider_active_cases(
+    npi: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Return all cases on this provider that are not yet closed/resolved.
+
+    Used by the provider detail page to surface a "currently being investigated"
+    banner — prevents two analysts from independently working the same target
+    without realising it (the #1 friction point in real customer use).
+
+    The query is read-only and not audit-logged — just a workflow signal.
+    """
+    from app.models import Case
+    from sqlalchemy.orm import selectinload
+
+    q = (
+        select(Case)
+        .options(selectinload(Case.assignee), selectinload(Case.creator))
+        .where(
+            Case.provider_npi == npi,
+            Case.status.in_(("open", "under_review")),
+        )
+        .order_by(Case.created_at.desc())
+    )
+    rows = (await db.execute(q)).scalars().all()
+    return [
+        {
+            "id":            c.id,
+            "case_number":   c.case_number,
+            "title":         c.title,
+            "status":        c.status,
+            "state":         c.state,
+            "created_at":    c.created_at.isoformat() if c.created_at else None,
+            "assigned_to_name": c.assignee.name if c.assignee else None,
+            "created_by_name":  c.creator.name if c.creator else None,
+        }
+        for c in rows
+    ]
+
+
 @router.get("/{npi}/report/pdf")
+@limiter.limit("20/minute")        # PDF generation is CPU-intensive
 async def provider_pdf_report(
+    request: Request,
     npi: str,
     background_tasks: BackgroundTasks,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -401,13 +473,49 @@ async def provider_pdf_report(
     if allowed_states and provider.state not in allowed_states:
         raise HTTPException(status_code=403, detail="Access denied for this state")
 
+    # Count prior Vigil accesses to this provider BEFORE generating the PDF
+    # so we can embed the count in the artefact (chain-of-custody / first-to-file
+    # evidence).  We exclude the LEIE auto-refresh events because those are
+    # not user actions.
+    from sqlalchemy import func as _sa_func
+    count_row = await db.execute(
+        select(_sa_func.count(), _sa_func.count(_sa_func.distinct(AuditLog.user_id)))
+        .where(
+            AuditLog.target_type == "provider",
+            AuditLog.target_id   == npi,
+            AuditLog.user_id     != None,   # noqa: E711 — exclude system actions
+        )
+    )
+    prior_total, prior_distinct_users = count_row.one()
+
     # Run synchronous PDF generation in thread-pool — non-blocking for event loop
+    from app.routers.system import MODEL_VERSION   # local import to avoid cycle
     loop = asyncio.get_event_loop()
     pdf_bytes: bytes = await loop.run_in_executor(
-        None, partial(generate_provider_pdf, provider, current_user)
+        None,
+        partial(
+            generate_provider_pdf, provider, current_user,
+            methodology_version=MODEL_VERSION,
+            prior_access_count=int(prior_total),
+            prior_distinct_users=int(prior_distinct_users),
+        ),
     )
 
-    # Write audit log after the response is sent — don't block the download
+    # Write audit log after the response is sent — don't block the download.
+    # Snapshot the model version + scored_at at the time of export so the
+    # audit record self-documents which version of the model produced the
+    # score embedded in this PDF.  Required by methodology doc §10.
+    attestation_id = request.headers.get("X-Attestation-Id")
+    audit_details = {
+        "methodology_version": MODEL_VERSION,
+        "risk_score_at_export": float(provider.risk_score) if provider.risk_score is not None else None,
+        "scored_at":            provider.scored_at.isoformat() if provider.scored_at else None,
+        "attestation_id":       attestation_id,
+        "ip":                   request.client.host if request.client else None,
+        "prior_access_count":   int(prior_total),
+        "prior_distinct_users": int(prior_distinct_users),
+    }
+
     async def _audit() -> None:
         from app.database import async_session_maker
         async with async_session_maker() as audit_db:
@@ -416,6 +524,7 @@ async def provider_pdf_report(
                 action="export_provider_pdf",
                 target_type="provider",
                 target_id=npi,
+                details=audit_details,
             ))
             await audit_db.commit()
 
@@ -429,7 +538,9 @@ async def provider_pdf_report(
 
 
 @router.get("/{npi}/analysis")
+@limiter.limit("30/minute")        # analysis is multi-query; cache absorbs repeat calls
 async def get_provider_analysis(
+    request: Request,
     npi: str,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],

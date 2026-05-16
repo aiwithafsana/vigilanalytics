@@ -30,11 +30,29 @@ PROC_DIR = DATA_DIR / "processed"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROC_DIR.mkdir(parents=True, exist_ok=True)
 
-# CMS Part B 2022 PUF — provider-level file (one row per NPI, ~200MB)
-CMS_URL = (
-    "https://data.cms.gov/sites/default/files/2025-11/"
-    "adcd20c5-4534-43cd-8dfa-881ebe7bacfd/MUP_PHY_R25_P07_V20_D22_Prov.csv"
-)
+# CMS Part B provider-level files (one row per NPI, ~200-500MB each)
+# Each year has a different UUID prefix; mapping is explicit.
+CMS_PROVIDER_URLS: dict[int, str] = {
+    2022: ("https://data.cms.gov/sites/default/files/2025-11/"
+           "adcd20c5-4534-43cd-8dfa-881ebe7bacfd/MUP_PHY_R25_P07_V20_D22_Prov.csv"),
+    2021: ("https://data.cms.gov/sites/default/files/2025-11/"
+           "fc6ea9aa-12f0-4c2f-9909-6c8e06c961cf/MUP_PHY_R25_P07_V20_D21_Prov.csv"),
+    2020: ("https://data.cms.gov/sites/default/files/2025-03/"
+           "4b0fefe3-eaed-43bd-be63-d45364cb9fd7/MUP_PHY_R25_P07_V10_D20_Prov.csv"),
+    2019: ("https://data.cms.gov/sites/default/files/2025-11/"
+           "ac110c46-3429-4f3c-9348-56f0a5312cb8/MUP_PHY_R25_P07_V20_D19_Prov.csv"),
+    2018: ("https://data.cms.gov/sites/default/files/2025-11/"
+           "57ea60f2-ef4b-46f2-8778-c7a50fab1737/MUP_PHY_R25_P07_V20_D18_Prov.csv"),
+}
+
+# Backwards compatibility — primary scoring year is 2022
+CMS_URL      = CMS_PROVIDER_URLS[2022]
+CMS_URL_2021 = CMS_PROVIDER_URLS[2021]
+
+# Years used for training data (in addition to 2022).  More years = more LEIE
+# overlap = more training positives.  2022 always serves as the production
+# scoring + holdout-validation year.
+TRAINING_YEARS = [2021, 2020, 2019, 2018]
 
 # HCPCS-level file for entropy + E&M ratio computation (~1.5GB)
 CMS_HCPCS_URL = (
@@ -72,9 +90,24 @@ def _download(url: str, dest: Path, label: str) -> Path:
     return dest
 
 
+def download_cms_provider_year(year: int) -> Path:
+    """Download CMS Part B provider-level file for the given year (2018-2022)."""
+    if year not in CMS_PROVIDER_URLS:
+        raise ValueError(f"No URL configured for year {year}; "
+                         f"available: {sorted(CMS_PROVIDER_URLS)}")
+    url = CMS_PROVIDER_URLS[year]
+    # Filename derived from URL so cache key matches the upstream version
+    fname = url.rsplit("/", 1)[-1]
+    dest = RAW_DIR / fname
+    return _download(url, dest, f"CMS Part B {year} (by provider)")
+
+
+# Backwards-compatible aliases
 def download_cms_provider() -> Path:
-    dest = RAW_DIR / "MUP_PHY_R25_P07_V20_D22_Prov.csv"
-    return _download(CMS_URL, dest, "CMS Part B 2022 (by provider)")
+    return download_cms_provider_year(2022)
+
+def download_cms_provider_2021() -> Path:
+    return download_cms_provider_year(2021)
 
 
 def download_cms_hcpcs() -> Path:
@@ -234,17 +267,26 @@ def process_leie(path: Path) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def run(skip_hcpcs: bool = False):
+def run(skip_hcpcs: bool = False, training_years: list[int] | None = None):
+    """
+    Download + aggregate primary year (2022) plus historical training years.
+
+    The primary year (2022) is the production scoring year and holdout-validation
+    year.  Historical years (default 2018-2021) provide additional training rows
+    where the same providers appear with billing patterns captured before some
+    of them were excluded — multiplying the number of confirmed training positives.
+    """
     print("\n=== INGEST ===")
 
-    # 1. Download
-    provider_path = download_cms_provider()
+    if training_years is None:
+        training_years = TRAINING_YEARS
+
+    # 1. Primary year (2022) — used for scoring + holdout
+    provider_path = download_cms_provider_year(2022)
     leie_path     = download_leie()
+    providers     = aggregate_provider_file(provider_path)
 
-    # 2. Aggregate provider file
-    providers = aggregate_provider_file(provider_path)
-
-    # 3. HCPCS-level features (entropy + E&M ratio)
+    # 2. HCPCS features for 2022 only (1.5GB file — only needed for the year we score)
     if not skip_hcpcs:
         try:
             hcpcs_path = download_cms_hcpcs()
@@ -258,12 +300,25 @@ def run(skip_hcpcs: bool = False):
         providers["billing_entropy"]   = np.nan
         providers["em_upcoding_ratio"] = np.nan
 
-    # 4. Save
     out_path = PROC_DIR / "providers_aggregated.parquet"
     providers.to_parquet(out_path, index=False)
     print(f"  [save] {out_path} ({len(providers):,} rows)")
 
-    # 5. LEIE
+    # 3. Historical training years
+    for yr in training_years:
+        try:
+            yr_path  = download_cms_provider_year(yr)
+            yr_provs = aggregate_provider_file(yr_path)
+            # Historical years don't get HCPCS features — fill NaN
+            yr_provs["billing_entropy"]   = np.nan
+            yr_provs["em_upcoding_ratio"] = np.nan
+            yr_out = PROC_DIR / f"providers_aggregated_{yr}.parquet"
+            yr_provs.to_parquet(yr_out, index=False)
+            print(f"  [save] {yr_out} ({len(yr_provs):,} rows)")
+        except Exception as e:
+            print(f"  [warn] Training year {yr} failed ({e}) — skipping")
+
+    # 4. LEIE
     leie = process_leie(leie_path)
     leie_path_out = PROC_DIR / "leie.parquet"
     leie.to_parquet(leie_path_out, index=False)

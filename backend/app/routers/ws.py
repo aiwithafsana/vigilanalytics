@@ -21,18 +21,24 @@ Message shapes:
 from __future__ import annotations
 
 import asyncio
+import logging
+import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.auth import decode_token
+from app.auth import _create_token, decode_token, get_current_user
+from app.cache import cache
 from app.config import get_settings
-from app.database import engine
+from app.database import AsyncSessionLocal, get_db
 from app.models import FraudFlag, Provider, User
 from app.ws_manager import ws_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
@@ -91,31 +97,102 @@ async def _fetch_new_alerts(
         return result
 
 
+_WS_TICKET_TTL = 30      # seconds a WS ticket remains valid
+_WS_TICKET_CACHE_KEY = "ws_ticket_used:"
+
+
+@router.get("/ws/ticket")
+async def get_ws_ticket(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """
+    Issue a short-lived (30-second), single-use WebSocket authentication ticket.
+
+    Browsers cannot set Authorization headers on WebSocket connections, so a naive
+    implementation passes the main JWT in the query string — where it appears in
+    server access logs, browser history, and Referrer headers.
+
+    The safe pattern:
+      1. Client calls GET /api/ws/ticket with the access token in the Authorization header.
+      2. Server returns a one-time ticket that expires in 30 seconds.
+      3. Client opens: ws://host/api/ws?ticket=<ticket>
+      4. Server validates the ticket, marks it used (cannot be replayed), and upgrades.
+
+    The ticket carries a random jti (JWT ID) nonce.  On use the server records the
+    nonce in the cache; any subsequent connection attempt with the same ticket is
+    rejected even within the 30-second window.
+    """
+    jti = secrets.token_hex(16)
+    ticket = _create_token(
+        {
+            "sub": str(current_user.id),
+            "type": "ws_ticket",
+            "jti": jti,
+            "ver": current_user.token_version,
+        },
+        timedelta(seconds=_WS_TICKET_TTL),
+    )
+    return {"ticket": ticket, "expires_in": _WS_TICKET_TTL}
+
+
 @router.websocket("/ws")
 async def websocket_alerts(
     websocket: WebSocket,
-    token: str = Query(..., description="JWT access token"),
+    token: str | None = Query(None, description="JWT access token (deprecated — use ticket=)"),
+    ticket: str | None = Query(None, description="Short-lived WS ticket from GET /api/ws/ticket"),
 ):
     # ── Authenticate ──────────────────────────────────────────────────────────
     try:
-        payload = decode_token(token)
-        if payload.get("type") != "access":
+        raw = ticket or token
+        if not raw:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+
+        payload = decode_token(raw)
+        token_type = payload.get("type")
+
+        if token_type == "ws_ticket":
+            # Single-use ticket: mark jti as consumed before any I/O to prevent
+            # a race condition where two concurrent connections use the same ticket.
+            jti = payload.get("jti")
+            if not jti:
+                await websocket.close(code=4001, reason="Malformed ticket")
+                return
+            cache_key = f"{_WS_TICKET_CACHE_KEY}{jti}"
+            if await cache.get(cache_key) is not None:
+                await websocket.close(code=4001, reason="Ticket already used")
+                return
+            # Mark as used for the duration of the ticket TTL
+            await cache.set(cache_key, True, ttl=_WS_TICKET_TTL)
+
+        elif token_type == "access":
+            pass  # accepted but discouraged (exposes token in URL/logs)
+        else:
             await websocket.close(code=4001, reason="Invalid token type")
             return
+
         user_id_str: str = payload.get("sub", "")
         user_uuid = UUID(user_id_str)
-    except Exception:
+    except Exception as exc:
+        logger.warning("WebSocket auth failed", extra={"error": str(exc)})
         await websocket.close(code=4001, reason="Authentication failed")
         return
 
-    Session: async_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
-
-    async with Session() as db:
+    # Re-use the module-level session factory — creating a new async_sessionmaker
+    # per connection would spawn an independent connection pool per client and
+    # exhaust PostgreSQL's max_connections under any real load.
+    async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.id == user_uuid))
         user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
         await websocket.close(code=4001, reason="User not found or inactive")
+        return
+
+    # Validate token version (same revocation check as get_current_user)
+    token_ver = payload.get("ver")
+    if token_ver is None or token_ver != user.token_version:
+        await websocket.close(code=4001, reason="Session revoked")
         return
 
     # ── Connect ───────────────────────────────────────────────────────────────
@@ -140,7 +217,7 @@ async def websocket_alerts(
                 pass  # Normal — poll time elapsed
 
             now = datetime.now(timezone.utc)
-            alerts = await _fetch_new_alerts(Session, user, since)
+            alerts = await _fetch_new_alerts(AsyncSessionLocal, user, since)
             since = now
 
             if alerts:
@@ -156,8 +233,12 @@ async def websocket_alerts(
                 })
 
     except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
+        pass  # normal client disconnect
+    except Exception as exc:
+        logger.error(
+            "WebSocket session error",
+            extra={"user_id": str(user_uuid), "error": str(exc)},
+            exc_info=True,
+        )
     finally:
         ws_manager.disconnect(conn_id, str(user_uuid))

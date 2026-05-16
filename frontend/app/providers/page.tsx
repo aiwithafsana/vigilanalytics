@@ -53,7 +53,9 @@ export default function ProvidersPage() {
   const [q, setQ]               = useState(() => searchParams.get("q") ?? "");
   const [state, setState]       = useState(() => searchParams.get("state") ?? "");
   const [specialty, setSpecialty] = useState(() => searchParams.get("specialty") ?? "");
-  const [isExcluded, setIsExcluded] = useState<string>(() => searchParams.get("is_excluded") ?? "");
+  // Default to "false" (new leads only) — analysts want to find new suspects,
+  // not re-list already-excluded providers that the compliance team already tracks.
+  const [isExcluded, setIsExcluded] = useState<string>(() => searchParams.get("is_excluded") ?? "false");
   const [minRisk, setMinRisk]   = useState<string>(() => searchParams.get("min_risk") ?? "");
   const [physicianOnly, setPhysicianOnly] = useState(() => searchParams.get("physician_only") === "true");
 

@@ -53,6 +53,7 @@ async def _get_top_leads(db: AsyncSession, allowed_states: list[str], limit: int
             FROM fraud_flags ff
             JOIN providers p ON p.npi = ff.npi
             WHERE ff.is_active = TRUE
+              AND p.is_excluded = FALSE
               AND p.state = ANY(:us_states)
               {allowed_clause}
             ORDER BY ff.npi, ff.severity ASC, ff.estimated_overpayment DESC NULLS LAST
@@ -91,6 +92,7 @@ async def dashboard(
             )
             top_result = await db.execute(
                 select(Provider)
+                .where(Provider.is_excluded == False)  # noqa: E712
                 .order_by(Provider.risk_score.desc().nullslast())
                 .limit(10)
             )
@@ -150,7 +152,7 @@ async def dashboard(
         select(func.count(Case.id)).where(case_cond, Case.status == "open")
     )
     top_result = await db.execute(
-        select(Provider).where(state_cond)
+        select(Provider).where(state_cond, Provider.is_excluded == False)  # noqa: E712
         .order_by(Provider.risk_score.desc().nullslast()).limit(10)
     )
     recent_result = await db.execute(

@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -17,6 +17,46 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class MfaChallengeResponse(BaseModel):
+    """Returned by /login when the user has MFA enabled.
+
+    The client must follow up with POST /login/mfa, supplying the
+    mfa_token + the TOTP code (or a backup code).
+    """
+    mfa_required: bool = True
+    mfa_token: str
+    expires_in: int = 300
+
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str = Field(..., description="6-digit TOTP code OR a 10-char backup code")
+
+
+class MfaSetupResponse(BaseModel):
+    """First-step enrollment response — secret + provisioning URI for QR rendering.
+    The user is NOT yet MFA-enabled; they must verify a code to activate."""
+    secret: str
+    provisioning_uri: str
+    issuer: str
+
+
+class MfaActivateRequest(BaseModel):
+    code: str = Field(..., description="TOTP code from the user's authenticator app")
+
+
+class MfaActivateResponse(BaseModel):
+    mfa_enabled: bool
+    backup_codes: list[str] = Field(
+        ...,
+        description="Plain-text backup codes shown to the user ONCE; store securely.",
+    )
+
+
+class MfaDisableRequest(BaseModel):
+    code: str = Field(..., description="Current TOTP or backup code, to confirm intent")
 
 
 class RefreshRequest(BaseModel):
@@ -57,6 +97,7 @@ class UserOut(BaseModel):
     is_active: bool
     created_at: datetime
     last_login: datetime | None
+    mfa_enabled: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -107,6 +148,7 @@ class ProviderDetail(ProviderSummary):
     leie_date: str | None
     leie_reason: str | None
     scored_at: datetime | None
+    shap_drivers: dict[str, Any] | None = None   # {top: [feat, ...], values: {feat: float}}
 
 
 class ProviderListResponse(BaseModel):
@@ -133,6 +175,13 @@ class CaseUpdate(BaseModel):
     assigned_to: UUID | None = None
     estimated_loss: Decimal | None = None
     notes: str | None = None
+
+
+class CaseOutcomeUpdate(BaseModel):
+    outcome: str = Field(
+        pattern=r"^(substantiated|unsubstantiated|referred_to_doj|referred_to_state_ag|closed_no_action)$"
+    )
+    outcome_note: str | None = None
 
 
 class CaseNoteCreate(BaseModel):
@@ -174,6 +223,10 @@ class CaseOut(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    # Outcome fields (null until case is resolved)
+    outcome: str | None = None
+    outcome_note: str | None = None
+    resolved_at: datetime | None = None
     provider: ProviderSummary | None = None
     case_notes: list[CaseNoteOut] = []
     documents: list[CaseDocumentOut] = []

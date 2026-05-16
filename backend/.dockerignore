@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.log
+
+# Secrets — never bake into image
+.env
+.env.*
+!.env.example
+
+# Test / tooling artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

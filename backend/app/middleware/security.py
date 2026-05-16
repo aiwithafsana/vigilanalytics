@@ -36,6 +36,10 @@ _CSP_DOCS = (
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
+        # BaseHTTPMiddleware cannot handle WebSocket upgrade requests — pass them through
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
         response: Response = await call_next(request)
 
         is_docs = request.url.path in _DOC_PATHS

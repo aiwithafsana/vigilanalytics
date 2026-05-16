@@ -7,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY, INET
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.services.encryption import EncryptedString
 
 
 class User(Base):
@@ -21,6 +22,27 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
+
+    # ── Security fields ────────────────────────────────────────────────────────
+    # token_version: increment to immediately invalidate all issued JWTs for
+    # this user (logout-all, forced re-auth after password change, account takeover response).
+    token_version = Column(Integer, default=0, nullable=False)
+    # failed_login_attempts / locked_until: temporary lockout after 5 bad passwords.
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+
+    # ── MFA (TOTP) ─────────────────────────────────────────────────────────────
+    # mfa_enabled: True only after the user has scanned the QR and verified a
+    # TOTP code (i.e. they actually have the secret in their authenticator).
+    # mfa_secret: base32 TOTP secret.  Column-encrypted via Fernet at rest
+    # (see services/encryption.py).  Application code reads/writes plain text;
+    # the EncryptedString TypeDecorator handles transparent encryption.
+    # mfa_backup_codes: bcrypt-hashed one-time codes; an array of strings.  When
+    # the user uses one, that hash is removed from the array.
+    mfa_enabled        = Column(Boolean, default=False, nullable=False)
+    mfa_secret         = Column(EncryptedString(256), nullable=True)
+    mfa_backup_codes   = Column(JSONB, default=list, nullable=False)
+    mfa_enrolled_at    = Column(DateTime(timezone=True), nullable=True)
 
     cases_assigned = relationship("Case", foreign_keys="Case.assigned_to", back_populates="assignee")
     cases_created = relationship("Case", foreign_keys="Case.created_by", back_populates="creator")
@@ -68,6 +90,13 @@ class Provider(Base):
     isolation_score = Column(Numeric(6, 4))
     autoencoder_score = Column(Numeric(6, 4))
 
+    # Per-patient peer comparison (size-invariant fraud signal for volume specialties)
+    ppb_vs_peer = Column(Numeric(8, 4))
+    peer_median_ppb = Column(Numeric(12, 2))
+
+    # SHAP feature attribution for top-10k providers (pre-computed)
+    shap_drivers = Column(JSONB, default=None)
+
     # Anomaly flags
     flags = Column(JSONB, default=[])
 
@@ -108,9 +137,14 @@ class Provider(Base):
 
     @property
     def name(self) -> str:
-        if self.name_first:
-            return f"{self.name_first} {self.name_last}"
-        return self.name_last or ""
+        # SQLAlchemy returns plain str at runtime, but Pylance/Pyright infer
+        # Column[str] from the Column(String(...)) declaration.  Coercing
+        # through str(... or "") satisfies the type checker without changing
+        # behaviour — SQLAlchemy's __get__ always returns the actual value.
+        first = str(self.name_first or "")
+        last  = str(self.name_last  or "")
+        joined = f"{first} {last}".strip()
+        return joined or ""
 
 
 class ReferralEdge(Base):
@@ -154,6 +188,12 @@ class Case(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Outcome tracking — closes the investigator feedback loop
+    # substantiated | unsubstantiated | referred_to_doj | referred_to_state_ag | closed_no_action
+    outcome = Column(String(30), nullable=True)
+    outcome_note = Column(Text, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
 
     provider = relationship("Provider", back_populates="cases")
     assignee = relationship("User", foreign_keys=[assigned_to], back_populates="cases_assigned")
@@ -326,6 +366,38 @@ class PeerBenchmark(Base):
     __table_args__ = (
         Index("ix_peer_benchmarks_lookup", "taxonomy_code", "state", "year", "hcpcs_code"),
         Index("ix_peer_benchmarks_specialty", "specialty", "state", "year", "hcpcs_code"),
+    )
+
+
+class AgentRun(Base):
+    """
+    Persisted record of one agent execution.
+
+    Reproducibility is a first-class requirement: investigators must be
+    able to point at a run and say "this is what we knew on YYYY-MM-DD at
+    HH:MM UTC."  result_json contains the full AgentRunResult.to_dict()
+    payload — every tool's findings, durations, raw responses, and the
+    aggregated finding ranking at the time of the run.
+    """
+    __tablename__ = "agent_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow      = Column(String(50), nullable=False, index=True)   # 'public_records', etc.
+    target_type   = Column(String(20), nullable=False)               # 'provider'
+    target_id     = Column(String(50), nullable=False, index=True)   # NPI
+    status        = Column(String(20), nullable=False, default="running")  # running | succeeded | failed | partial
+    started_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at  = Column(DateTime(timezone=True), nullable=True)
+    duration_ms   = Column(Integer, nullable=True)
+    n_findings    = Column(Integer, nullable=True)
+    max_severity  = Column(String(10), nullable=True)
+    triggered_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    result_json   = Column(JSONB, nullable=True)
+    error         = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_agent_runs_target", "target_type", "target_id"),
+        Index("ix_agent_runs_workflow_started", "workflow", "started_at"),
     )
 
 

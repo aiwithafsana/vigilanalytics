@@ -806,13 +806,33 @@ def generate_analysis(
             "action": action,
         })
 
-    # ── Estimated exposure
-    exposure_from_flags = sum(
-        float(f.estimated_overpayment or 0) for f in flags if f.estimated_overpayment
-    )
-    if exposure_from_flags == 0:
-        peer_median = float(provider.peer_median_payment or 0)
-        exposure_from_flags = max(0.0, total_payment - peer_median) if peer_median > 0 else 0.0
+    # ── Estimated exposure (with documented methodology)
+    flag_overpayments = [float(f.estimated_overpayment) for f in flags if f.estimated_overpayment]
+    exposure_from_flags = sum(flag_overpayments)
+    peer_median = float(provider.peer_median_payment or 0)
+
+    if exposure_from_flags > 0:
+        exposure_methodology = (
+            f"Sum of estimated overpayments from {len(flag_overpayments)} active fraud signal(s). "
+            f"Each signal's overpayment is calculated as: total Medicare payment attributable to the "
+            f"flagged billing pattern minus the expected payment at specialty×state peer median rates. "
+            f"Source: CMS Medicare Part B 2022 Public Use File. This figure represents a floor "
+            f"estimate — it does not account for co-conspirators or multi-year schemes."
+        )
+    elif peer_median > 0:
+        excess = max(0.0, total_payment - peer_median)
+        exposure_from_flags = excess
+        exposure_methodology = (
+            f"Excess above specialty×state peer median: "
+            f"${total_payment:,.2f} (provider total) − ${peer_median:,.2f} (peer median) "
+            f"= ${excess:,.2f}. "
+            f"Peer group: {provider.specialty or 'Unknown'} providers in {provider.state or 'Unknown'} "
+            f"with ≥10 members; falls back to specialty-only if state group is too small. "
+            f"Source: CMS Medicare Part B 2022 Public Use File. This is a conservative estimate — "
+            f"actual overpayment requires claim-level review."
+        )
+    else:
+        exposure_methodology = "Insufficient peer data to compute excess payment estimate."
 
     # ── Recommended actions
     actions = _build_actions(
@@ -835,6 +855,30 @@ def generate_analysis(
     else:
         model_confidence = round(min(score / 100, 0.99), 3)
 
+    # ── SHAP feature drivers (from DB, pre-computed for top 10k providers)
+    shap_drivers = None
+    raw_shap = getattr(provider, "shap_drivers", None)
+    if raw_shap:
+        try:
+            shap_drivers = raw_shap if isinstance(raw_shap, dict) else {}
+        except Exception:
+            shap_drivers = None
+
+    # ── Annotate billing anomalies with explicit HCPCS citations
+    for anomaly in billing_anomalies:
+        hcpcs = anomaly.get("hcpcs") or "Unknown"
+        paid  = anomaly.get("total_paid", 0)
+        svcs  = anomaly.get("services", 0)
+        benes = anomaly.get("beneficiaries", 0)
+        spb   = anomaly.get("services_per_bene", 0)
+        rate  = paid / svcs if svcs > 0 else 0
+        anomaly["citation"] = (
+            f"HCPCS {hcpcs}: {svcs:,} services to {benes:,} unique beneficiaries "
+            f"({spb:.1f} services/patient) — ${paid:,.2f} total paid "
+            f"(avg ${rate:,.2f}/service). "
+            f"Source: CMS Part B PUF 2022, NPI {provider.npi}."
+        )
+
     return {
         "npi": provider.npi,
         "provider_name": name,
@@ -843,18 +887,18 @@ def generate_analysis(
         "risk_score": score,
         "priority": priority,
         "priority_label": priority_label,
-        # Both keys for frontend compatibility (scheme_type = canonical, scheme_label = display)
         "scheme_type": scheme_name,
         "scheme_label": scheme_name,
         "model_confidence": model_confidence,
         "narrative": narrative,
-        # Split narrative into paragraphs for frontend rendering
         "narrative_paragraphs": [p for p in narrative.split("\n\n") if p.strip()],
         "key_findings": key_findings,
         "billing_anomalies": billing_anomalies,
         "network_suspects": network_suspects,
         "recommended_actions": actions,
         "estimated_exposure": exposure_from_flags if exposure_from_flags > 0 else None,
+        "exposure_methodology": exposure_methodology,
+        "shap_drivers": shap_drivers,
         "active_signals": len(flags),
         "suspicious_edges": len(suspicious_edges),
         "generated_at": now.isoformat(),

@@ -79,15 +79,188 @@ async function request<T>(path: string, options: RequestInit = {}, _retry = true
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export async function login(email: string, password: string) {
-  const data = await request<{ access_token: string; refresh_token: string }>(
+export interface MfaChallenge {
+  mfa_required: true;
+  mfa_token: string;
+  expires_in: number;
+}
+
+export interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  token_type?: string;
+}
+
+export type LoginResult =
+  | { kind: "tokens"; tokens: TokenPair }
+  | { kind: "mfa_required"; challenge: MfaChallenge };
+
+/**
+ * Two-step login.  If the user has MFA enabled, the server returns an
+ * `mfa_required` challenge instead of tokens; the caller must follow up
+ * with `loginMfa(...)` after collecting the user's TOTP / backup code.
+ */
+export async function login(email: string, password: string): Promise<LoginResult> {
+  // The /login endpoint returns either TokenPair OR MfaChallenge — both are
+  // 200 OK so we discriminate on the body shape.
+  const data = await request<TokenPair | MfaChallenge>(
     "/api/users/login",
     { method: "POST", body: JSON.stringify({ email, password }) }
   );
-  localStorage.setItem("vigil_token", data.access_token);
-  localStorage.setItem("vigil_refresh_token", data.refresh_token);
-  return data;
+
+  if ("mfa_required" in data && data.mfa_required) {
+    return { kind: "mfa_required", challenge: data };
+  }
+  const tokens = data as TokenPair;
+  localStorage.setItem("vigil_token", tokens.access_token);
+  localStorage.setItem("vigil_refresh_token", tokens.refresh_token);
+  return { kind: "tokens", tokens };
 }
+
+/**
+ * Step 2 of login — verify TOTP or backup code.  On success, persists the
+ * tokens to localStorage just like a no-MFA login would.
+ */
+export async function loginMfa(mfa_token: string, code: string): Promise<TokenPair> {
+  const tokens = await request<TokenPair>("/api/users/login/mfa", {
+    method: "POST",
+    body: JSON.stringify({ mfa_token, code }),
+  });
+  localStorage.setItem("vigil_token", tokens.access_token);
+  localStorage.setItem("vigil_refresh_token", tokens.refresh_token);
+  return tokens;
+}
+
+// ── MFA enrollment ────────────────────────────────────────────────────────────
+export interface MfaSetup {
+  secret: string;
+  provisioning_uri: string;
+  issuer: string;
+}
+
+export interface MfaActivateResult {
+  mfa_enabled: boolean;
+  backup_codes: string[];
+}
+
+export const mfaSetup = () =>
+  request<MfaSetup>("/api/users/mfa/setup", { method: "POST" });
+
+export const mfaActivate = (code: string) =>
+  request<MfaActivateResult>("/api/users/mfa/activate", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+export const mfaDisable = (code: string) =>
+  request<void>("/api/users/mfa/disable", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+export const mfaRegenerateBackupCodes = (code: string) =>
+  request<MfaActivateResult>("/api/users/mfa/regenerate-backup-codes", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+// ── Audit timeline (per-target chain of custody) ──────────────────────────────
+export interface AuditLogItem {
+  id:           number;
+  user_id:      string | null;
+  user_name:    string | null;
+  action:       string;
+  target_type:  string | null;
+  target_id:    string | null;
+  details:      Record<string, unknown>;
+  ip_address:   string | null;
+  created_at:   string;
+}
+
+export interface AuditTimeline {
+  items:     AuditLogItem[];
+  total:     number;
+  page:      number;
+  page_size: number;
+}
+
+export const getAuditTimeline = (
+  target_type: "provider" | "case" | "user",
+  target_id: string,
+  limit = 50,
+) => {
+  const qs = new URLSearchParams({ target_type, target_id, limit: String(limit) });
+  return request<AuditTimeline>(`/api/audit/timeline?${qs}`);
+};
+
+// ── Agent runs ────────────────────────────────────────────────────────────────
+// Agentic workflows (Public Records aggregator, etc.) — see backend/app/agents/
+
+export type AgentSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type AgentRunStatus = "running" | "succeeded" | "partial" | "failed";
+
+export interface AgentFinding {
+  source:   string;
+  severity: AgentSeverity;
+  title:    string;
+  summary:  string;
+  url:      string | null;
+  date:     string | null;
+}
+
+export interface AgentToolResult {
+  tool_name:   string;
+  success:     boolean;
+  n_findings:  number;
+  duration_ms: number;
+  error:       string | null;
+}
+
+export interface AgentRunResult {
+  workflow:           string;
+  target_type:        string;
+  target_id:          string;
+  started_at:         string;
+  completed_at:       string;
+  duration_ms:        number;
+  success:            boolean;
+  n_tools_run:        number;
+  n_tools_succeeded:  number;
+  n_findings:         number;
+  max_severity:       AgentSeverity;
+  tool_results:       AgentToolResult[];
+  findings:           AgentFinding[];
+}
+
+export interface AgentRun {
+  id:                       number;
+  workflow:                 string;
+  target_type:              string;
+  target_id:                string;
+  status:                   AgentRunStatus;
+  started_at:               string | null;
+  completed_at:             string | null;
+  duration_ms:              number | null;
+  n_findings:               number | null;
+  max_severity:             AgentSeverity | null;
+  triggered_by_user_id:     string | null;
+  result:                   AgentRunResult | null;
+  error:                    string | null;
+}
+
+export const triggerAgentRun = (workflow: string, npi: string) =>
+  request<{ agent_run_id: number; workflow: string; npi: string; status: string; poll_url: string }>(
+    `/api/agents/${workflow}/run?npi=${encodeURIComponent(npi)}`,
+    { method: "POST" },
+  );
+
+export const getAgentRun = (runId: number) =>
+  request<AgentRun>(`/api/agents/runs/${runId}`);
+
+export const listAgentRuns = (target_id: string, target_type = "provider", limit = 20) =>
+  request<AgentRun[]>(
+    `/api/agents/runs?target_type=${target_type}&target_id=${encodeURIComponent(target_id)}&limit=${limit}`,
+  );
 
 export function logout() {
   localStorage.removeItem("vigil_token");
@@ -96,6 +269,55 @@ export function logout() {
 }
 
 export const getMe = () => request<User>("/api/users/me");
+
+// ── System / data vintage ─────────────────────────────────────────────────────
+// Surfaces how fresh the underlying scoring + LEIE data is.  Required for
+// legal-defensibility — every score shown in the UI must be accompanied by
+// the data-as-of date so investigators / attorneys know what they're seeing.
+export interface DataVintage {
+  model_version:            string;
+  scoring_data_year:        number;
+  scoring_data_through:     string;            // YYYY-12-31
+  providers_last_scored_at: string | null;
+  leie_last_refreshed_at:   string | null;
+  leie_active_count:        number;
+  as_of:                    string;
+}
+
+export const getDataVintage = () => request<DataVintage>("/api/system/data-vintage");
+
+export const triggerLeieRefresh = () =>
+  request<{ status: string; message: string; triggered_at: string; triggered_by: string }>(
+    "/api/system/leie-refresh",
+    { method: "POST" },
+  );
+
+// ── Attestations ──────────────────────────────────────────────────────────────
+// Recorded before sensitive actions (PDF export, marking case substantiated, etc.)
+// to create an audit trail that the user reviewed the methodology limitations.
+export type AttestationAction =
+  | "pdf_export"
+  | "csv_export"
+  | "case_outcome_substantiated"
+  | "case_referral";
+
+export interface AttestationResponse {
+  attestation_id: number;
+  for_action:     AttestationAction;
+  attested_at:    string;
+  expires_in:     number;     // seconds
+}
+
+export const recordAttestation = (body: {
+  action:      AttestationAction;
+  target_id?:  string;
+  target_type?: "provider" | "case";
+  methodology_version?: string;
+}) =>
+  request<AttestationResponse>("/api/audit/attestation", {
+    method: "POST",
+    body: JSON.stringify({ methodology_version: "2.1.0", ...body }),
+  });
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
@@ -113,6 +335,20 @@ export function getProviders(params: Record<string, string | number | boolean | 
 
 export const getProvider = (npi: string) =>
   request<ProviderDetail>(`/api/providers/${npi}`);
+
+export interface ProviderActiveCase {
+  id:                 number;
+  case_number:        string;
+  title:              string;
+  status:             "open" | "under_review";
+  state:              string | null;
+  created_at:         string | null;
+  assigned_to_name:   string | null;
+  created_by_name:    string | null;
+}
+
+export const getProviderActiveCases = (npi: string) =>
+  request<ProviderActiveCase[]>(`/api/providers/${npi}/active-cases`);
 
 export const getProviderPdfUrl = (npi: string) =>
   `${BASE}/api/providers/${npi}/report/pdf`;
@@ -161,6 +397,17 @@ export function addCaseNote(caseId: number, content: string) {
   return request<CaseNote>(`/api/cases/${caseId}/notes`, {
     method: "POST",
     body: JSON.stringify({ content }),
+  });
+}
+
+export function recordOutcome(
+  caseId: number,
+  outcome: import("@/types").CaseOutcome,
+  outcome_note?: string
+) {
+  return request<import("@/types").Case>(`/api/cases/${caseId}/outcome`, {
+    method: "PATCH",
+    body: JSON.stringify({ outcome, outcome_note }),
   });
 }
 
