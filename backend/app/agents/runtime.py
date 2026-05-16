@@ -21,12 +21,11 @@ from __future__ import annotations
 import logging
 import traceback
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.base import Agent, AgentContext, AgentRunResult, Severity
+from app.agents.base import Agent, AgentContext, AgentRunResult
 from app.database import AsyncSessionLocal
 from app.models import AgentRun, AuditLog
 

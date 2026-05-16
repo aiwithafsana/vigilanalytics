@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.runtime import context_from_provider_npi, run_agent_persistent
+from app.agents.runtime import context_from_provider_npi
 from app.agents.workflows.public_records import PublicRecordsAgent
 from app.auth import get_current_user
 from app.database import AsyncSessionLocal, get_db

@@ -29,12 +29,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.auth import _create_token, decode_token, get_current_user
 from app.cache import cache
 from app.config import get_settings
-from app.database import AsyncSessionLocal, get_db
+from app.database import AsyncSessionLocal
 from app.models import FraudFlag, Provider, User
 from app.ws_manager import ws_manager
 

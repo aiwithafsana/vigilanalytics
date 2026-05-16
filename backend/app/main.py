@@ -2,13 +2,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
@@ -18,6 +17,8 @@ from app.logging_config import configure_logging
 from app.routers import providers, cases, dashboard, users, audit, network
 from app.routers import alerts
 from app.routers import ws as ws_router
+from app.routers import system as system_router
+from app.routers import agents as agents_router
 from app.middleware.audit import AuditMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 
@@ -134,11 +135,7 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(network.router, prefix="/api/network", tags=["network"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(ws_router.router, prefix="/api", tags=["realtime"])
-
-from app.routers import system as system_router
 app.include_router(system_router.router, prefix="/api/system", tags=["system"])
-
-from app.routers import agents as agents_router
 app.include_router(agents_router.router, prefix="/api/agents", tags=["agents"])
 
 

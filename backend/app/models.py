@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
     Numeric, SmallInteger, String, Text, UniqueConstraint, func

@@ -277,7 +277,7 @@ class Agent(abc.ABC):
 
         try:
             selected = await self.plan(context)
-        except Exception as e:
+        except Exception:
             # Plan failure is an unusual case — fall back to all tools
             selected = list(self.tools)
 

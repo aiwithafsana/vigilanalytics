@@ -72,41 +72,41 @@ def _facility_scheme_and_narrative(specialty: str) -> tuple[str, str]:
     if _is_lab(specialty):
         return (
             "Laboratory Billing Review — High-Volume Facility",
-            f"This provider is a clinical laboratory. High services-per-patient ratios "
-            f"and large shared-patient networks are structurally expected for labs — a "
-            f"single patient visit routinely generates 10–20 individual HCPCS billing "
-            f"codes (CBC, metabolic panel, lipids, urinalysis, etc.), and labs share "
-            f"patients with virtually every referring physician in their region. "
-            f"The standard physician billing anomaly model does not apply here. "
-            f"Lab-specific fraud patterns to investigate include: billing for tests not "
-            f"ordered by a physician, duplicate claims across multiple NPIs, test kit "
-            f"fraud (billing for tests performed on samples that were never collected "
-            f"from an actual patient), and specimen identity fraud. "
-            f"Review should focus on ordering physician relationships and whether "
-            f"volume is consistent with the lab's documented patient population — "
-            f"not on services-per-patient ratios, which will always be high."
+            "This provider is a clinical laboratory. High services-per-patient ratios "
+            "and large shared-patient networks are structurally expected for labs — a "
+            "single patient visit routinely generates 10–20 individual HCPCS billing "
+            "codes (CBC, metabolic panel, lipids, urinalysis, etc.), and labs share "
+            "patients with virtually every referring physician in their region. "
+            "The standard physician billing anomaly model does not apply here. "
+            "Lab-specific fraud patterns to investigate include: billing for tests not "
+            "ordered by a physician, duplicate claims across multiple NPIs, test kit "
+            "fraud (billing for tests performed on samples that were never collected "
+            "from an actual patient), and specimen identity fraud. "
+            "Review should focus on ordering physician relationships and whether "
+            "volume is consistent with the lab's documented patient population — "
+            "not on services-per-patient ratios, which will always be high."
         )
     elif _is_imaging(specialty):
         return (
             "Imaging/Diagnostic Facility Review — High-Volume Facility",
-            f"This provider is a diagnostic imaging or testing facility. Multiple "
-            f"imaging studies per patient per encounter, combined with referrals from "
-            f"a large panel of ordering physicians, naturally produce high shared-patient "
-            f"counts and elevated total payments. "
-            f"Imaging-specific fraud patterns include: billing for reads on images not "
-            f"taken, unbundling global procedure codes, upcoding imaging complexity, "
-            f"self-referral arrangements in violation of the Stark Law (42 U.S.C. § 1395nn), "
-            f"and payment arrangements with ordering physicians. "
-            f"Review should focus on ordering physician concentration and whether "
-            f"any single referral source accounts for a disproportionate share of volume."
+            "This provider is a diagnostic imaging or testing facility. Multiple "
+            "imaging studies per patient per encounter, combined with referrals from "
+            "a large panel of ordering physicians, naturally produce high shared-patient "
+            "counts and elevated total payments. "
+            "Imaging-specific fraud patterns include: billing for reads on images not "
+            "taken, unbundling global procedure codes, upcoding imaging complexity, "
+            "self-referral arrangements in violation of the Stark Law (42 U.S.C. § 1395nn), "
+            "and payment arrangements with ordering physicians. "
+            "Review should focus on ordering physician concentration and whether "
+            "any single referral source accounts for a disproportionate share of volume."
         )
     else:
         return (
             "Facility-Type Provider Review",
-            f"This provider is a facility-type entity (DME, pharmacy, ambulance, or similar). "
-            f"Standard physician billing anomaly metrics (services-per-patient ratios, "
-            f"peer payment comparisons) are not clinically meaningful for this provider type. "
-            f"Relevant fraud patterns depend on the specific provider category."
+            "This provider is a facility-type entity (DME, pharmacy, ambulance, or similar). "
+            "Standard physician billing anomaly metrics (services-per-patient ratios, "
+            "peer payment comparisons) are not clinically meaningful for this provider type. "
+            "Relevant fraud patterns depend on the specific provider category."
         )
 
 
@@ -371,15 +371,15 @@ def _classify_relationship(
     # Action
     if suspect.is_excluded:
         action = (
-            f"Subpoena referral and payment records. Any Medicare claims submitted "
-            f"through or facilitated by an excluded provider expose all parties to "
-            f"False Claims Act liability. Refer to OIG immediately."
+            "Subpoena referral and payment records. Any Medicare claims submitted "
+            "through or facilitated by an excluded provider expose all parties to "
+            "False Claims Act liability. Refer to OIG immediately."
         )
     elif reverse and shared > 50:
         action = (
-            f"Pull shared patient roster for both practices. Cross-reference appointment "
-            f"records, referral logs, and any financial arrangements. Bidirectional "
-            f"high-volume patient sharing is a primary Anti-Kickback Statute indicator."
+            "Pull shared patient roster for both practices. Cross-reference appointment "
+            "records, referral logs, and any financial arrangements. Bidirectional "
+            "high-volume patient sharing is a primary Anti-Kickback Statute indicator."
         )
     elif suspect_score >= 80:
         action = (
@@ -452,11 +452,11 @@ def _build_actions(
         add(
             "Claims Audit",
             f"Pull 100% of claims for HCPCS {top['hcpcs']} and request medical records",
-            f"This code accounts for the highest-value billing anomaly. Request HCPCS-level "
-            f"claim detail from the MAC, then draw a statistically valid sample (minimum 50 "
-            f"records). For each sampled claim: (1) verify the service date, (2) confirm "
-            f"the drug/service was actually provided, (3) verify units administered match "
-            f"units billed, and (4) confirm medical necessity documentation supports the claim.",
+            "This code accounts for the highest-value billing anomaly. Request HCPCS-level "
+            "claim detail from the MAC, then draw a statistically valid sample (minimum 50 "
+            "records). For each sampled claim: (1) verify the service date, (2) confirm "
+            "the drug/service was actually provided, (3) verify units administered match "
+            "units billed, and (4) confirm medical necessity documentation supports the claim.",
         )
 
     # Network investigation

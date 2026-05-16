@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
-from app.schemas import TokenData
 
 settings = get_settings()
 bearer_scheme = HTTPBearer()

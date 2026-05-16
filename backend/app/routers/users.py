@@ -18,6 +18,14 @@ from app.auth import (
     verify_password,
     decode_token,
 )
+from app.database import get_db
+from app.models import User, AuditLog
+from app.schemas import (
+    UserCreate, UserOut, UserUpdate, LoginRequest, TokenResponse, RefreshRequest,
+    MfaChallengeResponse, MfaVerifyRequest, MfaSetupResponse,
+    MfaActivateRequest, MfaActivateResponse, MfaDisableRequest,
+)
+from app.services import mfa as mfa_service
 
 # Pre-hashed dummy password used to keep verify_password timing constant even
 # when the email doesn't exist (prevents user enumeration via response time).
@@ -27,14 +35,6 @@ _DUMMY_HASH = "$2b$12$LVJBgMrXGxShbGKGMdgBRuugrJNu6c7tlsNqkFxGkUKdxP/LBqkOa"
 # Account lockout: 5 consecutive failures → 15-minute lock
 _MAX_FAILURES   = 5
 _LOCKOUT_MINUTES = 15
-from app.database import get_db
-from app.models import User, AuditLog
-from app.schemas import (
-    UserCreate, UserOut, UserUpdate, LoginRequest, TokenResponse, RefreshRequest,
-    MfaChallengeResponse, MfaVerifyRequest, MfaSetupResponse,
-    MfaActivateRequest, MfaActivateResponse, MfaDisableRequest,
-)
-from app.services import mfa as mfa_service
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)

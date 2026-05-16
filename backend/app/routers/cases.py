@@ -471,7 +471,6 @@ async def record_outcome(
     the case is closed.
     """
     from datetime import datetime, timezone
-    from sqlalchemy import update as sql_update
 
     result = await db.execute(
         select(Case)
