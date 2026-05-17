@@ -6,13 +6,15 @@ GET /api/network/{npi}/2hop   — 2-hop neighborhood (can be large, capped at 15
 GET /api/network/search       — find providers by name/NPI to seed graph
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth import get_current_user
-from app.models import Provider, ReferralEdge
+from app.models import Provider, ReferralEdge, User
 
 router = APIRouter()
 
@@ -47,11 +49,12 @@ def _edge_dict(e: ReferralEdge) -> dict:
 @router.get("/search")
 async def search_network_providers(
     q: str = Query(..., min_length=2),
-    db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Full-text search for providers to seed the graph from.
     Prioritises providers that have referral edges (i.e. appear in the network).
+    Results are restricted to the user's allowed states.
     """
     term = f"%{q}%"
 
@@ -62,7 +65,7 @@ async def search_network_providers(
         .exists()
     )
 
-    result = await db.execute(
+    query = (
         select(Provider)
         .where(
             or_(
@@ -77,6 +80,12 @@ async def search_network_providers(
         )
         .limit(20)
     )
+
+    allowed_states = current_user.state_access or []
+    if allowed_states:
+        query = query.where(Provider.state.in_(allowed_states))
+
+    result = await db.execute(query)
     providers = result.scalars().all()
     return [_provider_node(p) for p in providers]
 
@@ -84,18 +93,24 @@ async def search_network_providers(
 @router.get("/{npi}")
 async def get_provider_network(
     npi: str,
-    db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """
     1-hop ego network centered on {npi}.
     Returns nodes (center + all direct neighbors) and edges between them.
+    The center provider must be within the user's allowed states.
     """
     # Validate center provider exists
     center_result = await db.execute(select(Provider).where(Provider.npi == npi))
     center = center_result.scalar_one_or_none()
     if not center:
         raise HTTPException(status_code=404, detail="Provider not found")
+
+    # State access check on the center provider
+    allowed_states = current_user.state_access or []
+    if allowed_states and center.state not in allowed_states:
+        raise HTTPException(status_code=403, detail="Access denied for this state")
 
     # Fetch edges touching this NPI — suspicious first, then by volume
     edges_result = await db.execute(
@@ -155,18 +170,24 @@ async def get_provider_network(
 @router.get("/{npi}/2hop")
 async def get_provider_network_2hop(
     npi: str,
-    db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
     max_nodes: int = Query(default=100, le=150),
 ):
     """
     2-hop neighborhood. Capped at max_nodes for performance.
     Prioritises highest-risk neighbors at each hop.
+    The center provider must be within the user's allowed states.
     """
     center_result = await db.execute(select(Provider).where(Provider.npi == npi))
     center = center_result.scalar_one_or_none()
     if not center:
         raise HTTPException(status_code=404, detail="Provider not found")
+
+    # State access check on the center provider
+    allowed_states = current_user.state_access or []
+    if allowed_states and center.state not in allowed_states:
+        raise HTTPException(status_code=403, detail="Access denied for this state")
 
     # Hop 1 — suspicious first, then by shared patient volume
     hop1_result = await db.execute(

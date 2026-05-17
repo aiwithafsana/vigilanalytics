@@ -1,31 +1,52 @@
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
-from app.database import engine, Base
+from app.database import engine, Base, get_db
+from app.middleware.trusted_ip import get_real_ip
+from app.logging_config import configure_logging
 from app.routers import providers, cases, dashboard, users, audit, network
 from app.routers import alerts
 from app.routers import ws as ws_router
+from app.routers import system as system_router
+from app.routers import agents as agents_router
 from app.middleware.audit import AuditMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 
 settings = get_settings()
 
-# Rate limiter (in-memory; use Redis backend in production)
-limiter = Limiter(key_func=get_remote_address, default_limits=["300/minute"])
+# Structured JSON logging — must be configured before any logger.getLogger() calls.
+configure_logging(level="DEBUG" if settings.app_env == "development" else "INFO")
+logger = logging.getLogger(__name__)
+
+# Rate limiter — uses direct TCP connection IP, NOT X-Forwarded-For.
+# Trusting X-Forwarded-For is trivially bypassed: an attacker rotates the header
+# value to circumvent per-IP limits.  In production behind a trusted reverse proxy,
+# configure the proxy to overwrite (not append) the real client IP into a single
+# dedicated header and update get_real_ip() accordingly.
+limiter = Limiter(key_func=get_real_ip, default_limits=["300/minute"])
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
     from app.cache import cache
+    from app.database import AsyncSessionLocal
 
-    # Create tables on startup
+    # Dev convenience: create any missing tables on startup.
+    # PRODUCTION SCHEMA CHANGES MUST FLOW THROUGH ALEMBIC — see db/migrations.
+    # `create_all(checkfirst=True)` only creates missing TABLES; it cannot add
+    # columns to existing tables and will silently leave schema drift in place.
+    # Run `alembic upgrade head` before starting the app in production.
     async with engine.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, checkfirst=True))
 
@@ -35,11 +56,43 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(600)
             removed = cache.purge_expired()
             if removed:
-                print(f"[cache] purged {removed} expired entries")
+                logger.info("Cache sweep complete", extra={"removed": removed})
 
-    task = asyncio.create_task(_cache_sweep())
+    # Background task: weekly LEIE refresh.
+    # First run is delayed 5 min so the API is fully serving traffic before a
+    # heavy download starts.  Then runs every 7 days.  The task catches and
+    # logs all exceptions so a single failure never crashes the server.
+    async def _leie_refresh_loop():
+        from app.services.leie_refresh import refresh_leie
+        WEEK_SECONDS = 7 * 24 * 60 * 60
+        STARTUP_DELAY = 5 * 60      # 5 min after boot
+        FAILURE_RETRY = 60 * 60     # 1 hour after a failure
+        await asyncio.sleep(STARTUP_DELAY)
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    delta = await refresh_leie(db)
+                    await db.commit()
+                logger.info(
+                    "Scheduled LEIE refresh applied",
+                    extra={
+                        "newly_excluded":   delta.newly_excluded,
+                        "newly_reinstated": delta.newly_reinstated,
+                        "flags_inserted":   delta.flags_inserted,
+                    },
+                )
+                await asyncio.sleep(WEEK_SECONDS)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Scheduled LEIE refresh failed; will retry in 1h")
+                await asyncio.sleep(FAILURE_RETRY)
+
+    cache_task = asyncio.create_task(_cache_sweep())
+    leie_task  = asyncio.create_task(_leie_refresh_loop())
     yield
-    task.cancel()
+    cache_task.cancel()
+    leie_task.cancel()
     await engine.dispose()
 
 
@@ -82,9 +135,30 @@ app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(network.router, prefix="/api/network", tags=["network"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(ws_router.router, prefix="/api", tags=["realtime"])
+app.include_router(system_router.router, prefix="/api/system", tags=["system"])
+app.include_router(agents_router.router, prefix="/api/agents", tags=["agents"])
 
 
 @app.get("/api/health", include_in_schema=False)
 async def health():
-    # Deliberately minimal — do not expose env or internal state
+    # Liveness probe — deliberately minimal, no external calls.
     return {"status": "ok"}
+
+
+@app.get("/api/ready", include_in_schema=False)
+async def ready(db: Annotated[AsyncSession, Depends(get_db)]):
+    """
+    Readiness probe — confirms the application can serve traffic.
+
+    Returns 200 when the DB is reachable, 503 when it isn't.
+    Kubernetes / Docker Swarm should gate traffic on this endpoint, not /api/health.
+    """
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "ready", "db": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Readiness check failed", extra={"error": str(exc)})
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "db": "unreachable"},
+        )

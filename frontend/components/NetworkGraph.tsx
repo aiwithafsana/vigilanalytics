@@ -45,7 +45,7 @@ export default function NetworkGraph({
       d3.select(svgRef.current).selectAll("*").remove();
 
       // ── Filter: reduce to top maxNodes neighbors ───────────────────────────
-      let workEdges = suspiciousOnly
+      const workEdges = suspiciousOnly
         ? edges.filter((e) => e.is_suspicious)
         : edges;
 

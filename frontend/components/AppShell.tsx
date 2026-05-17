@@ -134,9 +134,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar unreadCount={unreadCount} onClearAlerts={clearCount} />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto">{children}</main>
       <AlertToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

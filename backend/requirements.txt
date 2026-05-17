@@ -10,6 +10,7 @@ alembic==1.14.0
 # Auth
 python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
+pyotp==2.9.0
 pydantic[email]==2.10.3
 pydantic-settings==2.6.1
 

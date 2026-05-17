@@ -9,6 +9,7 @@ export interface User {
   is_active: boolean;
   created_at: string;
   last_login: string | null;
+  mfa_enabled?: boolean;
 }
 
 export interface Flag {
@@ -53,6 +54,7 @@ export interface ProviderDetail extends ProviderSummary {
   leie_date: string | null;
   leie_reason: string | null;
   scored_at: string | null;
+  shap_drivers: { top: string[]; values: Record<string, number> } | null;
 }
 
 export interface ProviderListResponse {
@@ -80,6 +82,13 @@ export interface CaseDocument {
   created_at: string;
 }
 
+export type CaseOutcome =
+  | "substantiated"
+  | "unsubstantiated"
+  | "referred_to_doj"
+  | "referred_to_state_ag"
+  | "closed_no_action";
+
 export interface Case {
   id: number;
   case_number: string;
@@ -93,6 +102,9 @@ export interface Case {
   created_by: string;
   created_at: string;
   updated_at: string;
+  outcome: CaseOutcome | null;
+  outcome_note: string | null;
+  resolved_at: string | null;
   provider: ProviderSummary | null;
   case_notes: CaseNote[];
   documents: CaseDocument[];

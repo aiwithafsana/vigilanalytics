@@ -4,17 +4,42 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { getCases } from "@/lib/api";
 import { fmt, statusBadge, providerName } from "@/lib/utils";
-import type { Case } from "@/types";
+import type { Case, CaseOutcome } from "@/types";
 import { FolderOpen } from "lucide-react";
 
 const STATUSES = ["", "open", "under_review", "closed", "referred"];
+const OUTCOMES: { value: string; label: string }[] = [
+  { value: "",                    label: "All Outcomes" },
+  { value: "substantiated",       label: "Substantiated" },
+  { value: "referred_to_doj",     label: "Referred to DOJ" },
+  { value: "referred_to_state_ag",label: "Referred to State AG" },
+  { value: "unsubstantiated",     label: "Unsubstantiated" },
+  { value: "closed_no_action",    label: "Closed — No Action" },
+];
+
+const OUTCOME_BADGE: Record<CaseOutcome, string> = {
+  substantiated:        "bg-red-500/15 text-red-400 border border-red-500/25",
+  referred_to_doj:      "bg-orange-500/15 text-orange-400 border border-orange-500/25",
+  referred_to_state_ag: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20",
+  unsubstantiated:      "bg-slate-500/15 text-slate-400 border border-slate-500/20",
+  closed_no_action:     "bg-slate-500/10 text-slate-500 border border-slate-500/15",
+};
+
+const OUTCOME_LABEL: Record<CaseOutcome, string> = {
+  substantiated:        "Substantiated",
+  referred_to_doj:      "→ DOJ",
+  referred_to_state_ag: "→ State AG",
+  unsubstantiated:      "Unsubstantiated",
+  closed_no_action:     "No Action",
+};
 
 export default function CasesPage() {
   const [items, setItems] = useState<Case[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("");
+  const [status, setStatus]   = useState("");
+  const [outcome, setOutcome] = useState("");
   const [assignedToMe, setAssignedToMe] = useState(false);
 
   const load = useCallback(async (p = 1) => {
@@ -22,7 +47,8 @@ export default function CasesPage() {
     try {
       const res = await getCases({
         page: p, page_size: 20,
-        ...(status && { status }),
+        ...(status  && { status }),
+        ...(outcome && { outcome }),
         ...(assignedToMe && { assigned_to_me: true }),
       });
       setItems(res.items);
@@ -31,7 +57,7 @@ export default function CasesPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, assignedToMe]);
+  }, [status, outcome, assignedToMe]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -51,7 +77,17 @@ export default function CasesPage() {
         <div className="flex flex-wrap gap-2 mb-5">
           <select value={status} onChange={e => setStatus(e.target.value)}
             className="bg-white/[0.03] border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none">
-            {STATUSES.map(s => <option key={s} value={s} className="bg-[#0f1623]">{s ? s.replace("_", " ") : "All Statuses"}</option>)}
+            {STATUSES.map(s => (
+              <option key={s} value={s} className="bg-[#0f1623]">
+                {s ? s.replace("_", " ") : "All Statuses"}
+              </option>
+            ))}
+          </select>
+          <select value={outcome} onChange={e => setOutcome(e.target.value)}
+            className="bg-white/[0.03] border border-white/[0.07] rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none">
+            {OUTCOMES.map(o => (
+              <option key={o.value} value={o.value} className="bg-[#0f1623]">{o.label}</option>
+            ))}
           </select>
           <label className="flex items-center gap-2 text-sm text-slate-400 border border-white/[0.07] px-3 py-2 rounded-lg cursor-pointer">
             <input type="checkbox" checked={assignedToMe} onChange={e => setAssignedToMe(e.target.checked)} className="accent-blue-500" />
@@ -75,11 +111,16 @@ export default function CasesPage() {
               className="flex items-center gap-4 bg-white/[0.02] border border-white/[0.05] hover:border-white/[0.10] hover:bg-white/[0.04] rounded-xl px-5 py-4 transition group"
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="text-xs font-mono text-slate-600">{c.case_number}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase ${statusBadge(c.status)}`}>
                     {c.status.replace("_", " ")}
                   </span>
+                  {c.outcome && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${OUTCOME_BADGE[c.outcome]}`}>
+                      {OUTCOME_LABEL[c.outcome]}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-medium text-slate-200 group-hover:text-white transition truncate">{c.title}</p>
                 {c.provider && (

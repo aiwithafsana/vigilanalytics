@@ -30,10 +30,10 @@ const ACTION_LABEL: Record<string, string> = {
   "view_provider":           "viewed provider",
   "view_provider_flags":     "viewed fraud flags",
   "view_provider_billing":   "viewed billing",
-  // ── Exports ──────────────────────────────────────────────────────────
+  // ── Exports ───────────────────────────────────────────────────────────
   "export_provider_pdf":     "exported PDF report",
   "export_csv":              "exported CSV",
-  // ── Cases ───────────────────────────────────────────────────────────
+  // ── Cases ─────────────────────────────────────────────────────────────
   "create_case":             "opened investigation",
   "update_case":             "updated case",
   "add_note":                "added note",
@@ -41,7 +41,7 @@ const ACTION_LABEL: Record<string, string> = {
   "record_outcome":          "recorded outcome",
   // ── Attestations ──────────────────────────────────────────────────────
   "attestation":             "attested to methodology",
-  // ── Auth ───────────────────────────────────────────────────────────
+  // ── Auth ─────────────────────────────────────────────────────────────
   "login":                   "signed in",
   "login_mfa_challenge_issued": "started MFA login",
   "login_mfa_failed":        "failed MFA verification",
@@ -86,6 +86,12 @@ export default function AuditTrail({
     if (items !== null) return;
     if (!open && !needsEager) return;
     let alive = true;
+    // Loading flag for async fetch — React 19's stricter set-state-in-effect
+    // rule flags this, but the pattern is intentional: we set loading=true
+    // before kicking off the request and clear it on settle.  Deferring via
+    // queueMicrotask would only add render latency.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
     getAuditTimeline(targetType, targetId)
       .then(t => alive && setItems(t.items))
       .catch(e => alive && setError(e?.message ?? "Failed to load audit trail"))

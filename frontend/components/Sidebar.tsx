@@ -5,8 +5,9 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Users, FolderOpen, ShieldAlert, LogOut,
-  Settings, Network, Bell, Map,
+  Settings, Network, Bell, Map, ShieldCheck,
 } from "lucide-react";
+import DataVintageBadge from "@/components/DataVintageBadge";
 
 type NavItem = {
   href: string;
@@ -128,6 +129,11 @@ export default function Sidebar({ unreadCount = 0, onClearAlerts }: SidebarProps
         )}
       </nav>
 
+      {/* Data vintage — required by methodology doc §8 */}
+      <div className="border-t border-white/[0.06] px-4 py-2.5 text-slate-400">
+        <DataVintageBadge variant="compact" />
+      </div>
+
       {/* User */}
       <div className="border-t border-white/[0.06] px-4 py-3">
         <div className="flex items-center gap-2.5">
@@ -138,6 +144,13 @@ export default function Sidebar({ unreadCount = 0, onClearAlerts }: SidebarProps
             <p className="text-xs font-medium text-slate-300 truncate">{user?.name}</p>
             <p className="text-[10px] text-slate-600 uppercase tracking-wider">{user?.role}</p>
           </div>
+          <Link
+            href="/account"
+            className="text-slate-600 hover:text-slate-300 transition"
+            title="Account security"
+          >
+            <ShieldCheck size={13} />
+          </Link>
           <button onClick={logout} className="text-slate-600 hover:text-slate-300 transition" title="Sign out">
             <LogOut size={13} />
           </button>

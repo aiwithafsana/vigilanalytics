@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+
+import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
@@ -45,7 +46,9 @@ function riskTierBadge(score: number | null) {
   return "bg-white/[0.04] text-slate-500 border border-white/[0.06]";
 }
 
-export default function ProvidersPage() {
+// Inner component that consumes useSearchParams — must be Suspense-wrapped
+// (see default export below) so Next.js can prerender the page shell.
+function ProvidersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -53,7 +56,9 @@ export default function ProvidersPage() {
   const [q, setQ]               = useState(() => searchParams.get("q") ?? "");
   const [state, setState]       = useState(() => searchParams.get("state") ?? "");
   const [specialty, setSpecialty] = useState(() => searchParams.get("specialty") ?? "");
-  const [isExcluded, setIsExcluded] = useState<string>(() => searchParams.get("is_excluded") ?? "");
+  // Default to "false" (new leads only) — analysts want to find new suspects,
+  // not re-list already-excluded providers that the compliance team already tracks.
+  const [isExcluded, setIsExcluded] = useState<string>(() => searchParams.get("is_excluded") ?? "false");
   const [minRisk, setMinRisk]   = useState<string>(() => searchParams.get("min_risk") ?? "");
   const [physicianOnly, setPhysicianOnly] = useState(() => searchParams.get("physician_only") === "true");
 
@@ -320,9 +325,12 @@ export default function ProvidersPage() {
                   <td className="px-4 py-3 text-slate-300 font-mono text-xs">{fmt(p.total_payment)}</td>
                   <td className="px-4 py-3">
                     {(() => {
-                      const displayCount = (p.flag_count ?? 0) > 0
-                        ? p.flag_count
-                        : (p.flags?.length ?? 0);
+                      // Prefer the precomputed flag_count when present; fall
+                      // back to length of the in-row flags array.  Both can
+                      // be null, so coalesce to number before comparing.
+                      const flagCount = p.flag_count ?? 0;
+                      const displayCount: number =
+                        flagCount > 0 ? flagCount : (p.flags?.length ?? 0);
                       return p.is_excluded ? (
                         <span className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded">
                           LEIE excluded
@@ -362,5 +370,25 @@ export default function ProvidersPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+
+// Default export wraps the search-param consumer in a Suspense boundary
+// so Next.js can statically build the page shell and defer the dynamic
+// (search-params-dependent) portion until request time.
+export default function ProvidersPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="p-8 text-slate-500 text-sm animate-pulse">
+            Loading providers…
+          </div>
+        </AppShell>
+      }
+    >
+      <ProvidersPageContent />
+    </Suspense>
   );
 }

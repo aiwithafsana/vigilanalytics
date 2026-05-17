@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Provider, Case, User, FraudFlag
+from app.models import Provider, Case, User
 from app.schemas import (
     DashboardResponse, DashboardStats, ProviderSummary, CaseOut, RiskDistribution, LeadItem
 )
@@ -53,6 +53,7 @@ async def _get_top_leads(db: AsyncSession, allowed_states: list[str], limit: int
             FROM fraud_flags ff
             JOIN providers p ON p.npi = ff.npi
             WHERE ff.is_active = TRUE
+              AND p.is_excluded = FALSE
               AND p.state = ANY(:us_states)
               {allowed_clause}
             ORDER BY ff.npi, ff.severity ASC, ff.estimated_overpayment DESC NULLS LAST
@@ -91,6 +92,7 @@ async def dashboard(
             )
             top_result = await db.execute(
                 select(Provider)
+                .where(Provider.is_excluded == False)  # noqa: E712
                 .order_by(Provider.risk_score.desc().nullslast())
                 .limit(10)
             )
@@ -134,9 +136,9 @@ async def dashboard(
         select(
             func.count(Provider.npi).label("total"),
             func.coalesce(func.sum(Provider.total_payment), 0).label("total_payment"),
-            func.count(sql_case((Provider.is_excluded == True, 1))).label("leie"),
+            func.count(sql_case((Provider.is_excluded.is_(True), 1))).label("leie"),
             func.count(sql_case((Provider.risk_score >= 70, 1))).label("high_risk"),
-            func.count(sql_case((and_(Provider.risk_score >= 70, Provider.is_excluded == False), 1))).label("new_leads"),
+            func.count(sql_case((and_(Provider.risk_score >= 70, Provider.is_excluded.is_(False)), 1))).label("new_leads"),
             func.count(func.distinct(Provider.state)).label("states"),
             func.count(sql_case((Provider.risk_score >= 90, 1))).label("critical"),
             func.count(sql_case((and_(Provider.risk_score >= 70, Provider.risk_score < 90), 1))).label("high"),
@@ -150,7 +152,7 @@ async def dashboard(
         select(func.count(Case.id)).where(case_cond, Case.status == "open")
     )
     top_result = await db.execute(
-        select(Provider).where(state_cond)
+        select(Provider).where(state_cond, Provider.is_excluded == False)  # noqa: E712
         .order_by(Provider.risk_score.desc().nullslast()).limit(10)
     )
     recent_result = await db.execute(

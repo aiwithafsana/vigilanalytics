@@ -1,3 +1,5 @@
+import asyncio
+import functools
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
@@ -12,20 +14,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
-from app.schemas import TokenData
 
 settings = get_settings()
 bearer_scheme = HTTPBearer()
 
 
 # ── Password hashing ──────────────────────────────────────────────────────────
+# bcrypt is intentionally slow (CPU-bound, ~100–300 ms).  Running it on the
+# event loop blocks all other requests for that duration.  Offload to the
+# default thread-pool executor so the loop stays free.
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+async def hash_password(password: str) -> str:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+    )
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+async def verify_password(plain: str, hashed: str) -> bool:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        functools.partial(bcrypt.checkpw, plain.encode(), hashed.encode()),
+    )
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
@@ -44,6 +56,10 @@ def create_access_token(user: User) -> str:
             "role": user.role,
             "state_access": user.state_access or [],
             "type": "access",
+            # ver is the token_version at issuance time.  If the user's DB row is
+            # incremented (logout, password change, account takeover response) all
+            # previously issued tokens are immediately rejected by get_current_user.
+            "ver": user.token_version,
         },
         timedelta(minutes=settings.access_token_expire_minutes),
     )
@@ -51,7 +67,14 @@ def create_access_token(user: User) -> str:
 
 def create_refresh_token(user: User) -> str:
     return _create_token(
-        {"sub": str(user.id), "type": "refresh"},
+        {
+            "sub": str(user.id),
+            "type": "refresh",
+            # ver in the refresh token enables single-use rotation: the refresh
+            # endpoint increments token_version after each use, making old
+            # refresh tokens invalid immediately.
+            "ver": user.token_version,
+        },
         timedelta(days=settings.refresh_token_expire_days),
     )
 
@@ -84,6 +107,17 @@ async def get_current_user(
 
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    # Validate token version — rejects all tokens issued before the last logout,
+    # password change, or forced re-auth.  Tokens without a "ver" claim (issued
+    # before this field was added) are rejected as a safe migration default.
+    token_ver = payload.get("ver")
+    if token_ver is None or token_ver != user.token_version:
+        raise HTTPException(
+            status_code=401,
+            detail="Session revoked — please log in again",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return user
 

@@ -72,41 +72,41 @@ def _facility_scheme_and_narrative(specialty: str) -> tuple[str, str]:
     if _is_lab(specialty):
         return (
             "Laboratory Billing Review — High-Volume Facility",
-            f"This provider is a clinical laboratory. High services-per-patient ratios "
-            f"and large shared-patient networks are structurally expected for labs — a "
-            f"single patient visit routinely generates 10–20 individual HCPCS billing "
-            f"codes (CBC, metabolic panel, lipids, urinalysis, etc.), and labs share "
-            f"patients with virtually every referring physician in their region. "
-            f"The standard physician billing anomaly model does not apply here. "
-            f"Lab-specific fraud patterns to investigate include: billing for tests not "
-            f"ordered by a physician, duplicate claims across multiple NPIs, test kit "
-            f"fraud (billing for tests performed on samples that were never collected "
-            f"from an actual patient), and specimen identity fraud. "
-            f"Review should focus on ordering physician relationships and whether "
-            f"volume is consistent with the lab's documented patient population — "
-            f"not on services-per-patient ratios, which will always be high."
+            "This provider is a clinical laboratory. High services-per-patient ratios "
+            "and large shared-patient networks are structurally expected for labs — a "
+            "single patient visit routinely generates 10–20 individual HCPCS billing "
+            "codes (CBC, metabolic panel, lipids, urinalysis, etc.), and labs share "
+            "patients with virtually every referring physician in their region. "
+            "The standard physician billing anomaly model does not apply here. "
+            "Lab-specific fraud patterns to investigate include: billing for tests not "
+            "ordered by a physician, duplicate claims across multiple NPIs, test kit "
+            "fraud (billing for tests performed on samples that were never collected "
+            "from an actual patient), and specimen identity fraud. "
+            "Review should focus on ordering physician relationships and whether "
+            "volume is consistent with the lab's documented patient population — "
+            "not on services-per-patient ratios, which will always be high."
         )
     elif _is_imaging(specialty):
         return (
             "Imaging/Diagnostic Facility Review — High-Volume Facility",
-            f"This provider is a diagnostic imaging or testing facility. Multiple "
-            f"imaging studies per patient per encounter, combined with referrals from "
-            f"a large panel of ordering physicians, naturally produce high shared-patient "
-            f"counts and elevated total payments. "
-            f"Imaging-specific fraud patterns include: billing for reads on images not "
-            f"taken, unbundling global procedure codes, upcoding imaging complexity, "
-            f"self-referral arrangements in violation of the Stark Law (42 U.S.C. § 1395nn), "
-            f"and payment arrangements with ordering physicians. "
-            f"Review should focus on ordering physician concentration and whether "
-            f"any single referral source accounts for a disproportionate share of volume."
+            "This provider is a diagnostic imaging or testing facility. Multiple "
+            "imaging studies per patient per encounter, combined with referrals from "
+            "a large panel of ordering physicians, naturally produce high shared-patient "
+            "counts and elevated total payments. "
+            "Imaging-specific fraud patterns include: billing for reads on images not "
+            "taken, unbundling global procedure codes, upcoding imaging complexity, "
+            "self-referral arrangements in violation of the Stark Law (42 U.S.C. § 1395nn), "
+            "and payment arrangements with ordering physicians. "
+            "Review should focus on ordering physician concentration and whether "
+            "any single referral source accounts for a disproportionate share of volume."
         )
     else:
         return (
             "Facility-Type Provider Review",
-            f"This provider is a facility-type entity (DME, pharmacy, ambulance, or similar). "
-            f"Standard physician billing anomaly metrics (services-per-patient ratios, "
-            f"peer payment comparisons) are not clinically meaningful for this provider type. "
-            f"Relevant fraud patterns depend on the specific provider category."
+            "This provider is a facility-type entity (DME, pharmacy, ambulance, or similar). "
+            "Standard physician billing anomaly metrics (services-per-patient ratios, "
+            "peer payment comparisons) are not clinically meaningful for this provider type. "
+            "Relevant fraud patterns depend on the specific provider category."
         )
 
 
@@ -371,15 +371,15 @@ def _classify_relationship(
     # Action
     if suspect.is_excluded:
         action = (
-            f"Subpoena referral and payment records. Any Medicare claims submitted "
-            f"through or facilitated by an excluded provider expose all parties to "
-            f"False Claims Act liability. Refer to OIG immediately."
+            "Subpoena referral and payment records. Any Medicare claims submitted "
+            "through or facilitated by an excluded provider expose all parties to "
+            "False Claims Act liability. Refer to OIG immediately."
         )
     elif reverse and shared > 50:
         action = (
-            f"Pull shared patient roster for both practices. Cross-reference appointment "
-            f"records, referral logs, and any financial arrangements. Bidirectional "
-            f"high-volume patient sharing is a primary Anti-Kickback Statute indicator."
+            "Pull shared patient roster for both practices. Cross-reference appointment "
+            "records, referral logs, and any financial arrangements. Bidirectional "
+            "high-volume patient sharing is a primary Anti-Kickback Statute indicator."
         )
     elif suspect_score >= 80:
         action = (
@@ -452,11 +452,11 @@ def _build_actions(
         add(
             "Claims Audit",
             f"Pull 100% of claims for HCPCS {top['hcpcs']} and request medical records",
-            f"This code accounts for the highest-value billing anomaly. Request HCPCS-level "
-            f"claim detail from the MAC, then draw a statistically valid sample (minimum 50 "
-            f"records). For each sampled claim: (1) verify the service date, (2) confirm "
-            f"the drug/service was actually provided, (3) verify units administered match "
-            f"units billed, and (4) confirm medical necessity documentation supports the claim.",
+            "This code accounts for the highest-value billing anomaly. Request HCPCS-level "
+            "claim detail from the MAC, then draw a statistically valid sample (minimum 50 "
+            "records). For each sampled claim: (1) verify the service date, (2) confirm "
+            "the drug/service was actually provided, (3) verify units administered match "
+            "units billed, and (4) confirm medical necessity documentation supports the claim.",
         )
 
     # Network investigation
@@ -806,13 +806,33 @@ def generate_analysis(
             "action": action,
         })
 
-    # ── Estimated exposure
-    exposure_from_flags = sum(
-        float(f.estimated_overpayment or 0) for f in flags if f.estimated_overpayment
-    )
-    if exposure_from_flags == 0:
-        peer_median = float(provider.peer_median_payment or 0)
-        exposure_from_flags = max(0.0, total_payment - peer_median) if peer_median > 0 else 0.0
+    # ── Estimated exposure (with documented methodology)
+    flag_overpayments = [float(f.estimated_overpayment) for f in flags if f.estimated_overpayment]
+    exposure_from_flags = sum(flag_overpayments)
+    peer_median = float(provider.peer_median_payment or 0)
+
+    if exposure_from_flags > 0:
+        exposure_methodology = (
+            f"Sum of estimated overpayments from {len(flag_overpayments)} active fraud signal(s). "
+            f"Each signal's overpayment is calculated as: total Medicare payment attributable to the "
+            f"flagged billing pattern minus the expected payment at specialty×state peer median rates. "
+            f"Source: CMS Medicare Part B 2022 Public Use File. This figure represents a floor "
+            f"estimate — it does not account for co-conspirators or multi-year schemes."
+        )
+    elif peer_median > 0:
+        excess = max(0.0, total_payment - peer_median)
+        exposure_from_flags = excess
+        exposure_methodology = (
+            f"Excess above specialty×state peer median: "
+            f"${total_payment:,.2f} (provider total) − ${peer_median:,.2f} (peer median) "
+            f"= ${excess:,.2f}. "
+            f"Peer group: {provider.specialty or 'Unknown'} providers in {provider.state or 'Unknown'} "
+            f"with ≥10 members; falls back to specialty-only if state group is too small. "
+            f"Source: CMS Medicare Part B 2022 Public Use File. This is a conservative estimate — "
+            f"actual overpayment requires claim-level review."
+        )
+    else:
+        exposure_methodology = "Insufficient peer data to compute excess payment estimate."
 
     # ── Recommended actions
     actions = _build_actions(
@@ -835,6 +855,30 @@ def generate_analysis(
     else:
         model_confidence = round(min(score / 100, 0.99), 3)
 
+    # ── SHAP feature drivers (from DB, pre-computed for top 10k providers)
+    shap_drivers = None
+    raw_shap = getattr(provider, "shap_drivers", None)
+    if raw_shap:
+        try:
+            shap_drivers = raw_shap if isinstance(raw_shap, dict) else {}
+        except Exception:
+            shap_drivers = None
+
+    # ── Annotate billing anomalies with explicit HCPCS citations
+    for anomaly in billing_anomalies:
+        hcpcs = anomaly.get("hcpcs") or "Unknown"
+        paid  = anomaly.get("total_paid", 0)
+        svcs  = anomaly.get("services", 0)
+        benes = anomaly.get("beneficiaries", 0)
+        spb   = anomaly.get("services_per_bene", 0)
+        rate  = paid / svcs if svcs > 0 else 0
+        anomaly["citation"] = (
+            f"HCPCS {hcpcs}: {svcs:,} services to {benes:,} unique beneficiaries "
+            f"({spb:.1f} services/patient) — ${paid:,.2f} total paid "
+            f"(avg ${rate:,.2f}/service). "
+            f"Source: CMS Part B PUF 2022, NPI {provider.npi}."
+        )
+
     return {
         "npi": provider.npi,
         "provider_name": name,
@@ -843,18 +887,18 @@ def generate_analysis(
         "risk_score": score,
         "priority": priority,
         "priority_label": priority_label,
-        # Both keys for frontend compatibility (scheme_type = canonical, scheme_label = display)
         "scheme_type": scheme_name,
         "scheme_label": scheme_name,
         "model_confidence": model_confidence,
         "narrative": narrative,
-        # Split narrative into paragraphs for frontend rendering
         "narrative_paragraphs": [p for p in narrative.split("\n\n") if p.strip()],
         "key_findings": key_findings,
         "billing_anomalies": billing_anomalies,
         "network_suspects": network_suspects,
         "recommended_actions": actions,
         "estimated_exposure": exposure_from_flags if exposure_from_flags > 0 else None,
+        "exposure_methodology": exposure_methodology,
+        "shap_drivers": shap_drivers,
         "active_signals": len(flags),
         "suspicious_edges": len(suspicious_edges),
         "generated_at": now.isoformat(),
