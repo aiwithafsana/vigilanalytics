@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+
+import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
@@ -45,7 +46,9 @@ function riskTierBadge(score: number | null) {
   return "bg-white/[0.04] text-slate-500 border border-white/[0.06]";
 }
 
-export default function ProvidersPage() {
+// Inner component that consumes useSearchParams — must be Suspense-wrapped
+// (see default export below) so Next.js can prerender the page shell.
+function ProvidersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -367,5 +370,25 @@ export default function ProvidersPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+
+// Default export wraps the search-param consumer in a Suspense boundary
+// so Next.js can statically build the page shell and defer the dynamic
+// (search-params-dependent) portion until request time.
+export default function ProvidersPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="p-8 text-slate-500 text-sm animate-pulse">
+            Loading providers…
+          </div>
+        </AppShell>
+      }
+    >
+      <ProvidersPageContent />
+    </Suspense>
   );
 }

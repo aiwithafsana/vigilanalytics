@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import AppShell from "@/components/AppShell";
@@ -25,7 +25,10 @@ const NetworkGraph = dynamic(() => import("@/components/NetworkGraph"), {
 const NODE_OPTIONS = [15, 30, 60, 120] as const;
 type NodeCount = (typeof NODE_OPTIONS)[number];
 
-export default function NetworkPage() {
+// The component that uses useSearchParams() is wrapped in <Suspense> in the
+// default export below.  Without the boundary, Next.js cannot statically
+// prerender the page — useSearchParams returns null during SSG.
+function NetworkPageContent() {
   const searchParams = useSearchParams();
 
   const [query, setQuery]               = useState("");
@@ -444,5 +447,25 @@ function RiskPill({ score, large }: { score: number; large?: boolean }) {
     }`}>
       {score.toFixed(0)}
     </span>
+  );
+}
+
+
+// Default export wraps the search-param consumer in a Suspense boundary so
+// Next.js can statically build the page shell while deferring the dynamic
+// portion until request time.
+export default function NetworkPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="p-8 text-slate-500 text-sm animate-pulse">
+            Loading network…
+          </div>
+        </AppShell>
+      }
+    >
+      <NetworkPageContent />
+    </Suspense>
   );
 }
