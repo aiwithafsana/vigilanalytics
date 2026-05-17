@@ -32,9 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem("vigil_token");
-    if (!token) { setLoading(false); return; }
+    if (!token) { 
+      setLoading(false);
+      return;
+    }
     refresh().finally(() => setLoading(false));
-  }, []);
+  }, [refresh]);
 
   return (
     <Ctx.Provider value={{ user, loading, logout: apiLogout, refresh }}>
