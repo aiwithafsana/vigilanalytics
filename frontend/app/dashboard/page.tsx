@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import CaseWatchDigestWidget from "@/components/CaseWatchDigestWidget";
 import { getDashboard, createCase } from "@/lib/api";
 import { fmt, fmtNum, providerName } from "@/lib/utils";
 import type { DashboardResponse, LeadItem } from "@/types";
@@ -238,6 +239,9 @@ export default function DashboardPage() {
 
               {/* ── Right sidebar ─────────────────────────────────────────────── */}
               <div className="space-y-4">
+                {/* Case-watch digest — what changed on user's open cases overnight */}
+                <CaseWatchDigestWidget />
+
                 {/* Risk distribution */}
                 <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
                   <h3 className="text-[10px] uppercase tracking-widest text-slate-500 font-medium mb-4">

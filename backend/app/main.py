@@ -88,11 +88,43 @@ async def lifespan(app: FastAPI):
                 logger.exception("Scheduled LEIE refresh failed; will retry in 1h")
                 await asyncio.sleep(FAILURE_RETRY)
 
+    # Background task: nightly case-watch sweep.
+    # Runs the public-records agent against every open case's provider, so
+    # the next morning each investigator's dashboard surfaces "what's new
+    # since yesterday" deltas without manual polling.
+    # First run delayed 15 min so morning traffic isn't competing with the
+    # heavy outbound API calls.  Re-runs every 24h.  Failures retry in 2h.
+    async def _case_watch_loop():
+        from app.services.case_watch import run_nightly_watch
+        DAY_SECONDS    = 24 * 60 * 60
+        STARTUP_DELAY  = 15 * 60       # 15 min after boot
+        FAILURE_RETRY  = 2 * 60 * 60   # 2 hours after a failure
+        await asyncio.sleep(STARTUP_DELAY)
+        while True:
+            try:
+                digest = await run_nightly_watch()
+                logger.info(
+                    "Scheduled case-watch sweep applied",
+                    extra={
+                        "n_cases_watched":      digest["n_cases_watched"],
+                        "n_cases_with_changes": digest["n_cases_with_changes"],
+                        "n_new_findings_total": digest["n_new_findings_total"],
+                    },
+                )
+                await asyncio.sleep(DAY_SECONDS)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Scheduled case-watch sweep failed; will retry in 2h")
+                await asyncio.sleep(FAILURE_RETRY)
+
     cache_task = asyncio.create_task(_cache_sweep())
     leie_task  = asyncio.create_task(_leie_refresh_loop())
+    watch_task = asyncio.create_task(_case_watch_loop())
     yield
     cache_task.cancel()
     leie_task.cancel()
+    watch_task.cancel()
     await engine.dispose()
 
 
