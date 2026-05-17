@@ -322,9 +322,12 @@ export default function ProvidersPage() {
                   <td className="px-4 py-3 text-slate-300 font-mono text-xs">{fmt(p.total_payment)}</td>
                   <td className="px-4 py-3">
                     {(() => {
-                      const displayCount = (p.flag_count ?? 0) > 0
-                        ? p.flag_count
-                        : (p.flags?.length ?? 0);
+                      // Prefer the precomputed flag_count when present; fall
+                      // back to length of the in-row flags array.  Both can
+                      // be null, so coalesce to number before comparing.
+                      const flagCount = p.flag_count ?? 0;
+                      const displayCount: number =
+                        flagCount > 0 ? flagCount : (p.flags?.length ?? 0);
                       return p.is_excluded ? (
                         <span className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded">
                           LEIE excluded
