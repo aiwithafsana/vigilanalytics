@@ -262,6 +262,32 @@ export const listAgentRuns = (target_id: string, target_type = "provider", limit
     `/api/agents/runs?target_type=${target_type}&target_id=${encodeURIComponent(target_id)}&limit=${limit}`,
   );
 
+// ── Case-watch digest ─────────────────────────────────────────────────────────
+// Per-user "what's new since last check" on the investigator's open cases.
+// Backed by the nightly sweep that runs PublicRecordsAgent against every open
+// case and surfaces findings that weren't present in the previous run.
+
+export interface CaseWatchUpdate {
+  case_id:        number;
+  case_number:    string | null;
+  provider_npi:   string;
+  agent_run_id:   number;
+  ran_at:         string | null;
+  n_new_findings: number;
+  max_severity:   AgentSeverity;
+  new_findings:   AgentFinding[];
+}
+
+export interface CaseWatchDigest {
+  n_open_cases:         number;
+  n_cases_with_updates: number;
+  since:                string;
+  updates:              CaseWatchUpdate[];
+}
+
+export const getCaseWatchDigest = (sinceHours = 168) =>
+  request<CaseWatchDigest>(`/api/cases/watch-digest?since_hours=${sinceHours}`);
+
 export function logout() {
   localStorage.removeItem("vigil_token");
   localStorage.removeItem("vigil_refresh_token");

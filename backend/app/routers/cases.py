@@ -105,6 +105,56 @@ def _can_write_case(user: User, case: Case) -> bool:
 
 # ── List cases ────────────────────────────────────────────────────────────────
 
+@router.get("/watch-digest", summary="Per-user case-watch digest")
+async def get_watch_digest(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    since_hours: int = Query(168, ge=1, le=24 * 30, description="Window in hours; default 7 days"),
+):
+    """
+    Return the case-watch deltas for the current user's open cases within
+    the lookback window.  Powers the "Updates on N of your M cases this
+    week" dashboard widget.
+
+    Only surfaces cases where the most-recent nightly watch run produced
+    findings that weren't present in the prior run.  Stable cases (no
+    new external signals) are omitted.
+
+    Note: this route lives at /api/cases/watch-digest and is defined BEFORE
+    the {case_id} route in this file because FastAPI matches in declaration
+    order — otherwise "watch-digest" would be eaten by the path parameter.
+    """
+    from app.services.case_watch import get_user_digest
+    return await get_user_digest(db, current_user.id, since_hours=since_hours)
+
+
+@router.post("/watch-digest/refresh", summary="Manually trigger a nightly watch sweep (admin only)")
+async def trigger_watch_sweep(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    max_cases: int = Query(500, ge=1, le=5000),
+):
+    """
+    Admin-only endpoint to run the case-watch sweep immediately rather
+    than waiting for the 24-hour cron.  Useful when:
+      - A new customer's cases are loaded and they want their first digest now
+      - Ops want to verify the sweep is healthy after deployment
+      - Diagnostic during an incident
+
+    The sweep runs in-process with the request (NOT a background task) so
+    the response includes the full digest summary.  At 500 cases that's
+    typically ~5 minutes.
+    """
+    from app.services.case_watch import run_nightly_watch
+    digest = await run_nightly_watch(max_cases=max_cases)
+    return {
+        "triggered_by":         current_user.email,
+        "n_cases_watched":      digest["n_cases_watched"],
+        "n_cases_with_changes": digest["n_cases_with_changes"],
+        "n_new_findings_total": digest["n_new_findings_total"],
+        "ran_at":               digest["ran_at"],
+    }
+
+
 @router.get("", response_model=CaseListResponse)
 async def list_cases(
     current_user: Annotated[User, Depends(get_current_user)],
