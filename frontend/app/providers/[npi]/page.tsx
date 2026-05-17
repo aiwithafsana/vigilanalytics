@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import DataVintageBadge from "@/components/DataVintageBadge";
+import FinancialImpactCard from "@/components/FinancialImpactCard";
 import AttestationModal from "@/components/AttestationModal";
 import AuditTrail from "@/components/AuditTrail";
 import ActiveInvestigationBanner from "@/components/ActiveInvestigationBanner";
@@ -331,6 +332,9 @@ export default function ProviderDetailPage() {
             {score > 0 ? score.toFixed(0) : "—"}
           </div>
         </div>
+
+        {/* ── Financial Impact (above-the-fold dollar figure for attorneys) ── */}
+        <FinancialImpactCard provider={p} />
 
         {/* ── Investigation Brief ─────────────────────────────────────────── */}
         {/* Load top signal immediately so investigators see "why" without clicking */}

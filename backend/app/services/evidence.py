@@ -140,28 +140,12 @@ def generate_provider_pdf(
     # Actual overpayment requires claim-level review and is determined by
     # auditors using contract-rate analysis, not aggregate billing.
     try:
-        ppb_excess = None
-        if provider.payment_per_bene and provider.total_beneficiaries:
-            # peer_median_ppb may be in provider model or computed from
-            # peer_median_payment / peer_median_benes
-            peer_ppb = None
-            if hasattr(provider, "peer_median_ppb") and provider.peer_median_ppb:
-                peer_ppb = float(provider.peer_median_ppb)
-            elif provider.peer_median_payment and provider.peer_median_benes:
-                peer_ppb = float(provider.peer_median_payment) / float(provider.peer_median_benes)
-            if peer_ppb is not None:
-                ppb_excess = max(
-                    0.0,
-                    (float(provider.payment_per_bene) - peer_ppb) * int(provider.total_beneficiaries),
-                )
-
-        total_excess = None
-        if provider.total_payment and provider.peer_median_payment and provider.benes_vs_peer:
-            # If the provider's billing were exactly at peer rates per patient,
-            # it would total: peer_ppb × actual_beneficiaries.  Excess is the
-            # gap between actual total_payment and that hypothetical.
-            if ppb_excess is not None:
-                total_excess = ppb_excess
+        # Use the shared financial-impact service so the PDF, the provider
+        # detail UI, and the CSV export all show the same numbers.
+        from app.services.financial_impact import compute_financial_impact
+        fi = compute_financial_impact(provider)
+        ppb_excess   = fi.excess_billing
+        total_excess = fi.excess_billing      # same metric — kept variable for code readability
 
         story.append(Paragraph("Estimated Financial Impact", section_style))
         story.append(Paragraph(
