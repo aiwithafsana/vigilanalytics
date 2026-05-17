@@ -24,15 +24,19 @@ Output is rendered in the provider detail page under the existing AI Brief
 tab; each finding links to the authoritative source.
 """
 from app.agents.base import Agent, AgentContext, Tool
-from app.agents.tools.sam_gov import SamGovExclusionsTool
-from app.agents.tools.oig_enforcement import OigEnforcementTool
+from app.agents.tools.ca_medical_board import CaliforniaMedicalBoardTool
 from app.agents.tools.courtlistener import CourtListenerTool
 from app.agents.tools.npi_registry import NpiRegistryTool
+from app.agents.tools.oig_enforcement import OigEnforcementTool
+from app.agents.tools.sam_gov import SamGovExclusionsTool
 
 
 class PublicRecordsAgent(Agent):
     name = "public_records"
-    description = "Cross-references provider against federal public records (NPI registry, SAM.gov, OIG, courts)"
+    description = (
+        "Cross-references provider against federal + state public records "
+        "(NPI registry, SAM.gov, OIG, courts, CA Medical Board)"
+    )
     target_type = "provider"
 
     @property
@@ -44,15 +48,24 @@ class PublicRecordsAgent(Agent):
             SamGovExclusionsTool(),
             OigEnforcementTool(),
             CourtListenerTool(),
+            # State-specific tools — self-skip for non-matching states.
+            # See each tool's _run() for the state filter.
+            CaliforniaMedicalBoardTool(),
         ]
 
     async def plan(self, context: AgentContext) -> list[Tool]:
         """
-        All three tools apply nationally — no per-tool filtering needed for v1.
+        Federal tools always run; state-specific tools self-skip when the
+        provider isn't in the relevant state.  This keeps the plan logic
+        simple — hand every tool the context, let the tool decide if it
+        applies, and rely on Tool.execute() returning fast (just a
+        "skipped" raw_response) for non-applicable tools.
 
-        Override targets for future workflows:
-          - Skip federal-only tools for an explicitly state-Medicaid run
-          - Add state-level medical-board tools when the provider's state has one
+        Future state coverage (separate tool per state):
+          - Texas Medical Board (texas_medical_board.py)
+          - Florida Department of Health (florida_doh.py)
+          - New York OPMC (ny_opmc.py)
+          - …
         """
         # If we don't have any name data, no point running anything — short-circuit
         if not (context.busname or context.name_last or context.name_first):
