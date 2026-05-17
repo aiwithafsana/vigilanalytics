@@ -47,12 +47,59 @@ PROC_DIR = DATA_DIR / "processed"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROC_DIR.mkdir(parents=True, exist_ok=True)
 
-# Bulk NPPES download endpoint.  CMS publishes a monthly snapshot; the URL
-# rotates by date so we let the operator supply --url if the auto-detected
-# one is stale.  Default points at the standard month-of-issue location.
-NPPES_DOWNLOAD_URL = (
+# Bulk NPPES download endpoint.  CMS publishes a monthly snapshot at:
+#   https://download.cms.gov/nppes/NPPES_Data_Dissemination_<Month>_<Year>.zip
+# The filename rotates each month.  We auto-detect the latest one by walking
+# back month-by-month from today until we find a file that exists on the
+# server.  The hardcoded fallback below is the last-known-good URL for
+# environments where outbound DNS to download.cms.gov isn't permitted.
+NPPES_INDEX_URL    = "https://download.cms.gov/nppes/"
+NPPES_FALLBACK_URL = (
     "https://download.cms.gov/nppes/NPPES_Data_Dissemination_April_2026.zip"
 )
+# Used by run_pipeline.py when constructing the URL.  May 17 2026 → check for
+# May 2026 file first, then April, etc., up to 6 months back.
+NPPES_DOWNLOAD_URL = NPPES_FALLBACK_URL
+
+
+def _resolve_latest_nppes_url() -> str:
+    """
+    Walk back month-by-month from today until we find an NPPES file that
+    actually exists on the server.  This avoids the "URL is stale because
+    the hardcoded month rotated" failure mode without requiring the operator
+    to update code each month.
+
+    Returns the resolved URL.  Falls back to the hardcoded URL if no
+    candidate works (e.g. CMS site is unreachable).
+    """
+    from datetime import date
+
+    today = date.today()
+    candidates: list[str] = []
+    for offset in range(6):
+        # Walk back: this month, last month, two months ago...
+        year  = today.year
+        month = today.month - offset
+        while month <= 0:
+            month += 12
+            year  -= 1
+        name = date(year, month, 1).strftime("%B_%Y")   # "May_2026"
+        candidates.append(
+            f"{NPPES_INDEX_URL}NPPES_Data_Dissemination_{name}.zip"
+        )
+
+    for url in candidates:
+        try:
+            r = requests.head(url, timeout=10, allow_redirects=True)
+            if r.status_code == 200:
+                print(f"  [nppes] resolved latest URL: {url}")
+                return url
+        except requests.RequestException:
+            continue
+
+    print(f"  [nppes] could not resolve a current URL; using fallback "
+          f"{NPPES_FALLBACK_URL}")
+    return NPPES_FALLBACK_URL
 
 # The NPPES CSV is ~10GB uncompressed; chunk size of 200k rows keeps peak
 # memory under ~1GB.
@@ -170,7 +217,16 @@ def _post_process(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def run(local_csv: str | None = None, url: str = NPPES_DOWNLOAD_URL) -> Path:
+def run(local_csv: str | None = None, url: str | None = None) -> Path:
+    """
+    Ingest NPPES enrichment.  If ``url`` is None, auto-resolve the latest
+    monthly snapshot from CMS — this keeps the pipeline working across
+    months without code changes.
+
+    Coverage telemetry: prints what fraction of CMS Part B providers got
+    NPPES data joined.  Anything under ~95% is suspicious (probable URL
+    mismatch or stale snapshot).
+    """
     print("\n=== INGEST: NPPES ===")
 
     # Load the set of NPIs we actually care about
@@ -181,13 +237,16 @@ def run(local_csv: str | None = None, url: str = NPPES_DOWNLOAD_URL) -> Path:
         )
     npi_series = pd.read_parquet(providers_parquet, columns=["npi"])["npi"]
     allowed = set(npi_series.astype(str).unique())
-    print(f"  [nppes] CMS providers to enrich: {len(allowed):,}")
+    n_target = len(allowed)
+    print(f"  [nppes] CMS providers to enrich: {n_target:,}")
 
     if local_csv:
         csv_path = Path(local_csv)
         if not csv_path.exists():
             raise FileNotFoundError(f"--local file not found: {csv_path}")
     else:
+        if url is None:
+            url = _resolve_latest_nppes_url()
         zip_path = _download_nppes_zip(url)
         csv_path = _find_data_csv(zip_path)
 
@@ -195,7 +254,16 @@ def run(local_csv: str | None = None, url: str = NPPES_DOWNLOAD_URL) -> Path:
     enriched = _post_process(enriched)
     out_path = PROC_DIR / "nppes_enrichment.parquet"
     enriched.to_parquet(out_path, index=False)
-    print(f"  [nppes] saved → {out_path} ({len(enriched):,} rows)")
+
+    # Coverage check — a healthy run enriches ~98% of CMS providers (NPPES
+    # is the authoritative source, so missing rows mean stale data or
+    # deactivated NPIs).
+    coverage = len(enriched) / max(n_target, 1)
+    print(f"  [nppes] saved → {out_path} ({len(enriched):,} rows, "
+          f"{coverage:.1%} coverage)")
+    if coverage < 0.90:
+        print(f"  [nppes] ⚠ low coverage ({coverage:.1%}) — likely stale "
+              f"NPPES snapshot; check the URL or download a newer file")
     return out_path
 
 
