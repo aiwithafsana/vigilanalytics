@@ -45,6 +45,15 @@ def parse_args():
     p.add_argument("--skip-train",   action="store_true", help="Skip training (use saved models)")
     p.add_argument("--skip-yoy",     action="store_true", help="Skip year-over-year surge detection")
     p.add_argument("--leie-only",    action="store_true", help="Only run LEIE refresh (fastest — no retraining)")
+    # NPPES enrichment is OPT-IN because the download is ~7GB and runs ~30 min.
+    # Once the parquet is cached, subsequent pipeline runs pick it up
+    # automatically via features.py — no need to re-pass the flag.
+    p.add_argument("--enrich-nppes", action="store_true",
+                   help="Run NPPES enrichment ingest (~7GB download, ~30min). "
+                        "Optional — features.py uses defaults when parquet absent.")
+    p.add_argument("--nppes-local",  type=str, default=None,
+                   help="Path to a local NPPES npidata_pfile_*.csv (skips download). "
+                        "Implies --enrich-nppes.")
     p.add_argument("--dry-run",      action="store_true", help="Stop before loading DB")
     return p.parse_args()
 
@@ -102,6 +111,18 @@ def main():
         path = PROC_DIR / f"providers_aggregated_{yr}.parquet"
         if path.exists():
             historical_providers[yr] = pd.read_parquet(path)
+
+    # 1b. NPPES enrichment (opt-in).  Runs AFTER ingest so we know which NPIs
+    # to filter on, and BEFORE features so features.py can join the parquet.
+    # Downloads ~7GB; only runs when --enrich-nppes or --nppes-local is set.
+    if args.enrich_nppes or args.nppes_local:
+        from pipeline.ingest_nppes import run as ingest_nppes
+        step("NPPES enrichment", ingest_nppes, local_csv=args.nppes_local)
+    elif (PROC_DIR / "nppes_enrichment.parquet").exists():
+        print("\n[info] Using cached NPPES enrichment (run --enrich-nppes to refresh)")
+    else:
+        print("\n[info] No NPPES enrichment — features fall back to defaults. "
+              "Pass --enrich-nppes to ingest (~7GB, ~30min).")
 
     # 2. Features (2022 — production scoring data)
     df = step("Features 2022", features, providers)
