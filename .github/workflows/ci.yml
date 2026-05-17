@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Manual trigger from the GitHub UI (Actions tab → Run workflow).
+  # Useful when a push event was missed (e.g. webhook hiccup, concurrency
+  # cancellation) and you want to re-run CI without pushing a no-op commit.
+  workflow_dispatch:
 
 # Cancel redundant runs on the same branch
 concurrency:
