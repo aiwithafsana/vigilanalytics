@@ -55,6 +55,21 @@ export interface ProviderDetail extends ProviderSummary {
   leie_reason: string | null;
   scored_at: string | null;
   shap_drivers: { top: string[]; values: Record<string, number> } | null;
+  /**
+   * Coarse "billing in excess of specialty/state peer median" estimate.
+   * NOT a damages calculation.  Surfaced to support contingency-economics
+   * triage — see backend/app/services/financial_impact.py.
+   */
+  financial_impact: {
+    expected_payment:  number | null;   // what they'd have billed at peer rate
+    actual_payment:    number | null;   // what they actually billed
+    excess_billing:    number | null;   // headline figure
+    excess_per_bene:   number | null;   // per-patient over-charge
+    peer_ppb_used:     number | null;   // the rate we anchored to
+    method:            "per_patient" | "unavailable";
+    formatted_excess:  string | null;   // e.g. "$180k", "$2.8M"
+    disclaimer:        string;
+  } | null;
 }
 
 export interface ProviderListResponse {

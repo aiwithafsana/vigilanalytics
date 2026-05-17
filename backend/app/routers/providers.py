@@ -315,7 +315,13 @@ async def get_provider(
     ))
     await db.flush()
 
-    return ProviderDetail.model_validate(provider)
+    # Compute the headline "excess billing vs peers" estimate.  Surfaced on
+    # the provider detail page above the score card; also embedded in the
+    # PDF export for the same coherent narrative.
+    from app.services.financial_impact import compute_financial_impact
+    detail = ProviderDetail.model_validate(provider)
+    detail.financial_impact = compute_financial_impact(provider).to_dict()
+    return detail
 
 
 @router.get("/{npi}/billing", response_model=list[BillingRecordOut])

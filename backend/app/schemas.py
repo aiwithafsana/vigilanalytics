@@ -149,6 +149,9 @@ class ProviderDetail(ProviderSummary):
     leie_reason: str | None
     scored_at: datetime | None
     shap_drivers: dict[str, Any] | None = None   # {top: [feat, ...], values: {feat: float}}
+    # Coarse "excess billing vs peer norm" estimate.  See services/financial_impact.py.
+    # Not a damages calculation — surfaced to support contingency-economics decisions.
+    financial_impact: dict[str, Any] | None = None
 
 
 class ProviderListResponse(BaseModel):
