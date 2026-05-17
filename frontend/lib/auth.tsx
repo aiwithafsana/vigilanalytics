@@ -38,8 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // a "loading" UI for an unauthenticated user, then immediately redirect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!token) { setLoading(false); return; }
+    if (!token) { 
+      setLoading(false);
+      return;
+    }
     refresh().finally(() => setLoading(false));
-  }, []);
+  }, [refresh]);
 
   return (
     <Ctx.Provider value={{ user, loading, logout: apiLogout, refresh }}>
