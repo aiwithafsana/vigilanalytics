@@ -180,12 +180,21 @@ def _load_data() -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     # Confirmed-fraud and confirmed-not-fraud labels from case outcomes are
     # added to the training set.  This is what turns the model from a generic
     # public-data scorer into a system that improves with usage.
+    leie_pos = set(train_npis)   # snapshot pre-merge so we can split sources later
     feedback_pos, feedback_neg = _load_investigator_labels()
     # Don't add feedback NPIs to training if they're in the temporal holdout —
     # protects validation integrity.
     feedback_pos -= holdout_npis
     feedback_neg -= holdout_npis
+    # New investigator-confirmed positives that aren't already in LEIE.  These
+    # are the labels nobody else in the market has — the compounding moat.
+    inv_only_pos = feedback_pos - leie_pos
     train_npis |= feedback_pos
+    print(f"  [train] Label sources:")
+    print(f"           LEIE pre-2023 (public):         {len(leie_pos):,}")
+    print(f"           Investigator-substantiated:     {len(feedback_pos):,}  "
+          f"({len(inv_only_pos):,} new vs LEIE — proprietary moat)")
+    print(f"           Investigator-cleared:           {len(feedback_neg):,}")
 
     # ── Label 2022 data ───────────────────────────────────────────────────────
     df_npi_str = df_2022["npi"].astype(str)
@@ -194,6 +203,9 @@ def _load_data() -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     # is_cleared marks providers investigators have explicitly cleared.  Used
     # by train_xgboost to up-weight them as hard negatives.
     df_2022["is_cleared"]          = df_npi_str.isin(feedback_neg).astype(int)
+    # is_investigator_positive lets train_xgboost up-weight investigator-
+    # confirmed positives above LEIE-only positives (they're fresher signal).
+    df_2022["is_investigator_positive"] = df_npi_str.isin(feedback_pos).astype(int)
     df_2022["data_year"]           = 2022
 
     # ── Discover and load all historical year features ───────────────────────
@@ -208,6 +220,7 @@ def _load_data() -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
         df_yr["is_train_positive"]   = df_yr_npi.isin(train_npis).astype(int)
         df_yr["is_holdout_positive"] = df_yr_npi.isin(holdout_npis).astype(int)
         df_yr["is_cleared"]          = df_yr_npi.isin(feedback_neg).astype(int)
+        df_yr["is_investigator_positive"] = df_yr_npi.isin(feedback_pos).astype(int)
         df_yr["data_year"]           = yr
         historical_dfs.append(df_yr)
         historical_years_loaded.append(yr)
@@ -345,18 +358,30 @@ def train_xgboost(X: np.ndarray, y: np.ndarray, df: pd.DataFrame) -> xgb.XGBClas
     n_ppb  = int(sig_ppb.sum())
     n_em   = int(sig_em.sum())
     n_conc = int(sig_concentration.sum())
-    print(f"  [train] Hard positives (LEIE + substantiated cases): {n_hard:,}  weight=5.0")
-    print(f"  [train]   ↳ ppb_vs_peer ≥ 5×:                  {n_ppb:,}")
-    print(f"  [train]   ↳ E&M upcoding ≥ 70%:                {n_em:,}")
-    print(f"  [train]   ↳ low entropy + 5× volume:           {n_conc:,}")
+    # Investigator-confirmed positives — fresher, proprietary signal that
+    # only Vigil customers generate.  Weighted higher than LEIE so the model
+    # leans toward what investigators are actually catching in the field.
+    is_inv_pos = df.get(
+        "is_investigator_positive", pd.Series(0, index=df.index),
+    ).fillna(0).astype(bool)
+    n_inv_pos = int((is_inv_pos & (y == 1)).sum())
+    n_leie_only_pos = n_hard - n_inv_pos    # purely LEIE positives
+
+    print(f"  [train] Hard positives:                        {n_hard:,}")
+    print(f"           ↳ LEIE pre-2023 only:                 {n_leie_only_pos:,}  weight=5.0")
+    print(f"           ↳ Investigator-substantiated:         {n_inv_pos:,}  weight=7.0")
     print(f"  [train] Soft positives (fraud-specific):       {n_soft:,}  weight=0.2")
+    print(f"           ↳ ppb_vs_peer ≥ 5×:                   {n_ppb:,}")
+    print(f"           ↳ E&M upcoding ≥ 70%:                 {n_em:,}")
+    print(f"           ↳ low entropy + 5× volume:            {n_conc:,}")
     print(f"  [train] Hard negatives (investigator-cleared): {n_cleared:,}  weight=3.0")
     print(f"  [train] Negatives (bulk unlabelled):           "
           f"{len(y) - n_hard - n_soft - n_cleared:,}")
 
     labels[soft_pos]  = 1
     weights[soft_pos] = 0.2
-    weights[y == 1]   = 5.0
+    weights[y == 1]   = 5.0                          # LEIE baseline
+    weights[is_inv_pos.values & (y == 1).values] = 7.0  # investigator override
     # Hard negatives: investigator-cleared providers.  Up-weight at 3.0 so the
     # model learns NOT to flag patterns that experts have already reviewed and
     # cleared.  This is the negative-feedback half of the investigator loop.
