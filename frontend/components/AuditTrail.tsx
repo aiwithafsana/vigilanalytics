@@ -34,10 +34,6 @@ const ACTION_LABEL: Record<string, string> = {
   "export_provider_pdf":     "exported PDF report",
   "export_csv":              "exported CSV",
   // ── Cases ─────────────────────────────────────────────────────────────
-  // ── Exports ──────────────────────────────────────────────────────────
-  "export_provider_pdf":     "exported PDF report",
-  "export_csv":              "exported CSV",
-  // ── Cases ───────────────────────────────────────────────────────────
   "create_case":             "opened investigation",
   "update_case":             "updated case",
   "add_note":                "added note",
@@ -46,7 +42,6 @@ const ACTION_LABEL: Record<string, string> = {
   // ── Attestations ──────────────────────────────────────────────────────
   "attestation":             "attested to methodology",
   // ── Auth ─────────────────────────────────────────────────────────────
-  // ── Auth ───────────────────────────────────────────────────────────
   "login":                   "signed in",
   "login_mfa_challenge_issued": "started MFA login",
   "login_mfa_failed":        "failed MFA verification",
