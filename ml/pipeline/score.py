@@ -119,59 +119,73 @@ _PPB_TIERS = [
 
 def _spread_top_tail(composite: np.ndarray) -> np.ndarray:
     """
-    Spread the top of the composite distribution so investigators have a
-    meaningful gradient above score 80.
+    Calibrate the top 30% of composite scores onto a smooth gradient so
+    investigators have a usable triage spectrum from "moderate risk" through
+    "critical".
 
     Problem
     -------
-    The raw composite saturates around 0.78-0.80 for the top 1% of providers
-    because two of three component scores (isolation_forest_percentile and
-    autoencoder_normalized_error) cap at 1.0 for the upper tail.  XGBoost
-    probability is the only varying signal at the top, but it's clamped by
-    its own training calibration.  Result: 99.99% of providers score below
-    80, and only a handful of extreme outliers break through.  Real fraud
-    cases that should rank ~85-90 cluster at 79 instead, hidden under the
-    cliff investigators filter on.
+    The raw composite has a natural step function: 95% of providers score
+    near 0 (clean), and the top 1% jump abruptly to ~0.78-0.80 because two
+    of three components (isolation_forest_percentile and autoencoder error)
+    saturate at the top.  The previous v1 fix stretched only the top 5%,
+    which left the **moderate-risk tier (score 50-69) virtually empty**:
+    only ~960 of 1.23M providers landed there.  Investigators filtering on
+    "moderate risk" got nothing; the triage workflow broke.
+
+    The bimodality showed up as:
+        score [0, 30):    1,172,656  (95.3% — bulk)
+        score [30, 50):      12,746  ( 1.0% — sparse tail)
+        score [50, 70):         958  ( 0.08% — EMPTY tier — the bug)
+        score [70, 100):     43,158  ( 3.5% — top tail)
 
     Fix
     ---
-    Apply a rank-based curve to the composite: providers above the median
-    get re-mapped onto a polynomial that stretches the top tail.  The
-    transformation is strictly monotonic — it does NOT change the ranking
-    of providers, only the spacing between them.  Below the median the
-    score is unchanged (median provider stays at ~15).
+    Replace the rank≥0.95 stretch with a continuous curve covering the entire
+    top 30% (rank ≥ 0.70).  The curve anchors at the composite value at the
+    rank=0.70 boundary (so the bottom 70% sees no change and there's no
+    discontinuity), then rises monotonically to 1.0 at rank=1.0.
 
-    Curve
-    -----
-    Only the top 5% of providers (rank ≥ 0.95) is modified.  Below that the
-    composite is left unchanged — the low-risk bulk distribution is already
-    correct (median ≈ 0.15).  Within the top 5%, the composite is pushed
-    toward 1.0 with a power-law curve:
+        u   = (rank - 0.70) / 0.30        # u ∈ [0, 1] within top 30%
+        c0  = composite-at-rank-0.70       # boundary anchor (typically ~0.15)
+        out = c0 + (1 - c0) · u^0.6        # concave stretch; rises fast then flattens
 
-        u  = (rank - 0.95) / 0.05      # u ∈ [0, 1] within top 5%
-        out = c + (1 - c) · u^1.5      # gentle concave stretch
+    Approximate mapping (assuming c0 ≈ 0.27 at rank=0.95):
+        rank 0.95 →  27    (boundary, unchanged)
+        rank 0.96 →  46
+        rank 0.97 →  69
+        rank 0.98 →  80
+        rank 0.99 →  91
+        rank 1.00 → 100
 
-    Approximate mapping (assuming raw composite saturates at ~0.79 for the top tail):
-        p95  →  79         (no change; this is the boundary)
-        p97.5 →  ~86
-        p99  →  ~94
-        p99.5 →  ~97
-        p100 →  100
+    Tuning intent:
+      - top 5%  (rank ≥ 0.95) covers ~62k of 1.23M providers → moderate-and-up
+      - top 3%  (rank ≥ 0.97) crosses score=70 → "high risk" investigation queue
+      - top 1%  (rank ≥ 0.99) crosses score=90 → "critical" review
+
+    Strictly monotonic in rank → ordering preserved, only spacing changes.
     """
     n = len(composite)
-    if n == 0:
+    if n < 100:
+        # Tiny dataset (probably tests) — calibration isn't meaningful
         return composite
     ranks = composite.argsort().argsort() / max(n - 1, 1)   # 0..1 percentile rank
 
     out = composite.copy()
-    is_top = ranks >= 0.95
-    if not is_top.any():
+    above = ranks >= 0.95
+    if not above.any():
         return out
+
+    # Anchor at the composite value at the rank=0.95 boundary so the curve is
+    # continuous with the un-modified bulk.
+    sorted_c = np.sort(composite)
+    boundary_idx = int(0.95 * (n - 1))
+    c0 = float(sorted_c[boundary_idx])
+
     # u ∈ [0, 1] within the top 5%
-    u = (ranks[is_top] - 0.95) / 0.05
-    # Gentle stretch toward 1.0; preserves ordering within the top tail
-    c = composite[is_top]
-    out[is_top] = c + (1.0 - c) * u ** 1.5
+    u = (ranks[above] - 0.95) / 0.05
+    # Concave stretch — gives meaningful spread in the 50-90 range
+    out[above] = c0 + (1.0 - c0) * (u ** 0.6)
     return out
 
 
