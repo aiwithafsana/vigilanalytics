@@ -179,7 +179,7 @@ export default function AccountPage() {
                 </div>
                 <details className="mt-3">
                   <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">
-                    Can't scan? Enter the secret manually
+                    Can&apos;t scan? Enter the secret manually
                   </summary>
                   <div className="mt-2 font-mono text-xs text-slate-300 bg-black/20 rounded p-2 break-all">
                     {mode.setup.secret}
@@ -257,7 +257,7 @@ export default function AccountPage() {
                 onClick={() => setMode({ kind: "idle" })}
                 className="w-full px-4 py-2 text-sm rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] text-slate-300 transition"
               >
-                I've saved my codes — done
+                I&apos;ve saved my codes — done
               </button>
             </div>
           )}

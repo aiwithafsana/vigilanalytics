@@ -32,6 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem("vigil_token");
+    // No token = nothing to refresh; flip loading=false synchronously so the
+    // login redirect can fire on the very next render.  React 19's set-state-
+    // in-effect rule warns here, but a deferred update would briefly render
+    // a "loading" UI for an unauthenticated user, then immediately redirect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!token) { setLoading(false); return; }
     refresh().finally(() => setLoading(false));
   }, []);

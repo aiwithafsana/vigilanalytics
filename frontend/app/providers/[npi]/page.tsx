@@ -533,7 +533,7 @@ export default function ProviderDetailPage() {
                 External public-records check
               </h2>
               <p className="text-xs text-slate-500">
-                Vigil's Public Records agent cross-references this provider against the NPI Registry,
+                Vigil&apos;s Public Records agent cross-references this provider against the NPI Registry,
                 SAM.gov federal exclusion list, OIG enforcement newsroom, and federal court dockets.
                 Each finding links to the original source — verify before relying.
               </p>

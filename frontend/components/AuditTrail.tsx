@@ -86,6 +86,11 @@ export default function AuditTrail({
     if (items !== null) return;
     if (!open && !needsEager) return;
     let alive = true;
+    // Loading flag for async fetch — React 19's stricter set-state-in-effect
+    // rule flags this, but the pattern is intentional: we set loading=true
+    // before kicking off the request and clear it on settle.  Deferring via
+    // queueMicrotask would only add render latency.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getAuditTimeline(targetType, targetId)
       .then(t => alive && setItems(t.items))
