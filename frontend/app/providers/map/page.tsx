@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import DataVintageBadge from "@/components/DataVintageBadge";
 import { getProviderMap } from "@/lib/api";
 import { fmt, fmtNum } from "@/lib/utils";
 import type { ProviderMapPoint } from "@/types";
@@ -128,13 +129,11 @@ export default function FraudMapPage() {
           ))}
         </div>
 
-        {/* Synthetic data notice */}
-        <div className="mb-6 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2.5">
-          <span className="text-amber-400 text-xs">⚠</span>
-          <p className="text-xs text-amber-400/80">
-            Synthetic CMS data · For demonstration only · Not real Medicare billing
-          </p>
-        </div>
+        {/* Data vintage — real CMS Part B data; methodology doc §8 requires
+            the data-as-of date to appear next to any aggregated state-level
+            statistics that an investigator or attorney might rely on. */}
+        <DataVintageBadge variant="full" className="mb-6" />
+
 
         {/* State table */}
         {loading ? (
