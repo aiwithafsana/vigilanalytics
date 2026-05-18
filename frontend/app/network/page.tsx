@@ -4,6 +4,8 @@ import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import AppShell from "@/components/AppShell";
+import NetworkExplainer from "@/components/NetworkExplainer";
+import NetworkInsightsPanel from "@/components/NetworkInsightsPanel";
 import {
   searchNetworkProviders,
   getProviderNetwork,
@@ -97,12 +99,15 @@ function NetworkPageContent() {
     <AppShell>
       <div className="p-6 space-y-4">
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
+        {/* ── Header — purpose first, "Referral Network" was opaque ────── */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-white">Referral Network</h1>
+            <h1 className="text-2xl font-bold text-white">
+              Who is this provider operating with?
+            </h1>
             <p className="text-slate-400 text-sm mt-0.5">
-              Explore co-billing clusters and suspicious referral patterns
+              Surface co-conspirator rings, kickback pairs, and hub
+              operators from CMS shared-patient data.
             </p>
           </div>
 
@@ -118,6 +123,10 @@ function NetworkPageContent() {
             </div>
           )}
         </div>
+
+        {/* What-this-is-and-how-to-use-it.  Collapses after first use. */}
+        <NetworkExplainer />
+
 
         {/* ── Search + hop ───────────────────────────────────────────────── */}
         <div className="flex gap-3 items-start flex-wrap">
@@ -244,19 +253,64 @@ function NetworkPageContent() {
           </div>
         )}
 
-        {/* ── Empty state ────────────────────────────────────────────────── */}
+        {/* ── Empty state — give the user something concrete to do ──────── */}
         {!graph && !loading && !error && (
-          <div className="flex flex-col items-center justify-center h-[460px] bg-slate-900/30 border border-slate-800 rounded-xl text-slate-500">
-            <svg className="w-16 h-16 mb-4 opacity-25" viewBox="0 0 64 64" fill="none">
-              <circle cx="16" cy="32" r="8" stroke="currentColor" strokeWidth="2" />
-              <circle cx="48" cy="16" r="8" stroke="currentColor" strokeWidth="2" />
-              <circle cx="48" cy="48" r="8" stroke="currentColor" strokeWidth="2" />
-              <line x1="24" y1="32" x2="40" y2="20" stroke="currentColor" strokeWidth="2" />
-              <line x1="24" y1="32" x2="40" y2="44" stroke="currentColor" strokeWidth="2" />
-              <line x1="48" y1="24" x2="48" y2="40" stroke="currentColor" strokeWidth="2" />
-            </svg>
-            <p className="text-sm font-medium text-slate-400">Search for a provider to explore their network</p>
-            <p className="text-xs mt-1">High-risk providers show the most connections</p>
+          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-8">
+            <div className="max-w-2xl mx-auto space-y-5">
+              <div className="text-center">
+                <svg className="w-12 h-12 mb-3 mx-auto opacity-30 text-slate-500" viewBox="0 0 64 64" fill="none">
+                  <circle cx="16" cy="32" r="8" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="48" cy="16" r="8" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="48" cy="48" r="8" stroke="currentColor" strokeWidth="2" />
+                  <line x1="24" y1="32" x2="40" y2="20" stroke="currentColor" strokeWidth="2" />
+                  <line x1="24" y1="32" x2="40" y2="44" stroke="currentColor" strokeWidth="2" />
+                  <line x1="48" y1="24" x2="48" y2="40" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                <p className="text-sm font-medium text-slate-300">
+                  Search above for a provider you&apos;re already investigating
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  This view tells you who else is in their referral cluster.
+                </p>
+              </div>
+
+              {/* Concrete "good places to start" suggestions */}
+              <div className="border-t border-slate-800 pt-5">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-medium mb-3 text-center">
+                  Good places to start
+                </p>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-start gap-2 text-slate-400">
+                    <span className="text-blue-400 shrink-0">→</span>
+                    <span>
+                      Pick a provider you saw on the{" "}
+                      <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 underline underline-offset-2">
+                        priority lead queue
+                      </Link>
+                      {" "}and search by their name or NPI
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2 text-slate-400">
+                    <span className="text-blue-400 shrink-0">→</span>
+                    <span>
+                      Open any case from{" "}
+                      <Link href="/cases" className="text-blue-400 hover:text-blue-300 underline underline-offset-2">
+                        Cases
+                      </Link>
+                      {" "}— there&apos;s a &quot;Referral Network&quot; button on the provider record
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2 text-slate-400">
+                    <span className="text-blue-400 shrink-0">→</span>
+                    <span>
+                      For the most signal: search a provider with risk score{" "}
+                      <span className="font-mono text-orange-400">≥ 80</span>{" "}
+                      — high-risk providers in active rings have the densest networks
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
         )}
 
@@ -267,6 +321,14 @@ function NetworkPageContent() {
               <span className="text-sm">Building network graph…</span>
             </div>
           </div>
+        )}
+
+        {/* ── Insights — plain-English narration of what's on screen ────── */}
+        {graph && !loading && (
+          <NetworkInsightsPanel
+            graph={graph}
+            onSelectNode={(npi) => loadGraph(npi, hop)}
+          />
         )}
 
         {/* ── Graph + sidebar ─────────────────────────────────────────────── */}
