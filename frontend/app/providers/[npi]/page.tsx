@@ -5,6 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import DataVintageBadge from "@/components/DataVintageBadge";
 import FinancialImpactCard from "@/components/FinancialImpactCard";
+import ExclusionTimingPanel from "@/components/ExclusionTimingPanel";
 import AttestationModal from "@/components/AttestationModal";
 import AuditTrail from "@/components/AuditTrail";
 import ActiveInvestigationBanner from "@/components/ActiveInvestigationBanner";
@@ -332,6 +333,17 @@ export default function ProviderDetailPage() {
             {score > 0 ? score.toFixed(0) : "—"}
           </div>
         </div>
+
+        {/* ── LEIE Exclusion Timing ─────────────────────────────────────────
+            Interprets the provider's LEIE exclusion date relative to the
+            scoring data year — three completely different legal stories
+            depending on whether the exclusion predates, occurs during, or
+            postdates the billing data Vigil is showing. */}
+        <ExclusionTimingPanel
+          isExcluded={p.is_excluded}
+          leieDate={p.leie_date}
+          leieReason={p.leie_reason}
+        />
 
         {/* ── Financial Impact (above-the-fold dollar figure for attorneys) ── */}
         <FinancialImpactCard provider={p} />
