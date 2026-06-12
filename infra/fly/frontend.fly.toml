@@ -1,0 +1,54 @@
+# frontend.fly.toml — Fly.io app config for Vigil Next.js frontend.
+#
+# Deploy from project root:
+#   fly deploy --config infra/fly/frontend.fly.toml --app vigil-frontend
+#
+# Assumes:
+#   1. App `vigil-frontend` already created via:  fly apps create vigil-frontend
+#   2. NEXT_PUBLIC_API_URL set as a *build-time* arg (it gets baked into the
+#      static bundle, so it must be present when `next build` runs).
+#
+# Region: iad — co-located with the backend so the SSR-fetch path is fast.
+
+app           = "vigil-frontend"
+primary_region = "iad"
+
+# `fly deploy` is invoked from `frontend/` (see deploy.sh) so the build
+# context is `frontend/` and Fly auto-detects the Dockerfile there.
+[build]
+  # Build-time env: Next.js inlines NEXT_PUBLIC_* into the static bundle
+  # during `next build`, so this value must be present at build time, not
+  # just at runtime.
+  [build.args]
+    NEXT_PUBLIC_API_URL = "https://api.vigilfraud.com"
+
+[env]
+  NODE_ENV = "production"
+  # Runtime port — must match the EXPOSE in frontend/Dockerfile
+  PORT     = "3000"
+
+[http_service]
+  internal_port       = 3000
+  force_https         = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type       = "requests"
+    soft_limit = 50      # Next.js handles more concurrency than the API
+    hard_limit = 100
+
+  # Next.js exposes / for liveness — no dedicated health endpoint needed
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/"
+    protocol     = "http"
+    timeout      = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"   # Next.js standalone is light; bump if SSR slows under load

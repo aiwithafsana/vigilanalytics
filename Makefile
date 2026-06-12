@@ -75,6 +75,31 @@ pipeline-dry: ## Full pipeline dry-run (stop before writing to DB)
 leie-refresh: ## Refresh LEIE exclusion list only (fast, ~30s)
 	$(ML_RUN) --leie-only
 
+# ── Production deploy (Fly.io) ────────────────────────────────────────────────
+# First-time setup is documented in infra/fly/README.md.  After that, these
+# targets handle ongoing deploys.
+
+deploy: ## Deploy backend + frontend to Fly.io (production)
+	./infra/fly/deploy.sh all
+
+deploy-backend: ## Deploy only the backend to Fly.io
+	./infra/fly/deploy.sh backend
+
+deploy-frontend: ## Deploy only the frontend to Fly.io
+	./infra/fly/deploy.sh frontend
+
+prod-logs-backend: ## Tail production backend logs
+	fly logs --app vigil-backend
+
+prod-logs-frontend: ## Tail production frontend logs
+	fly logs --app vigil-frontend
+
+prod-ssh: ## SSH into the production backend container
+	fly ssh console --app vigil-backend
+
+prod-psql: ## Connect to the production Postgres
+	fly postgres connect --app vigil-db
+
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 secret: ## Generate a secure SECRET_KEY (copy output to .env)
