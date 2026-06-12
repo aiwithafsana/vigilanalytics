@@ -1,0 +1,65 @@
+# backend.fly.toml — Fly.io app config for Vigil FastAPI backend.
+#
+# Deploy from project root:
+#   fly deploy --config infra/fly/backend.fly.toml --app vigil-backend
+#
+# This config assumes:
+#   1. App `vigil-backend` already created via:    fly apps create vigil-backend
+#   2. Volume `vigil_data` already exists via:    fly volumes create vigil_data --app vigil-backend --size 3 --region iad
+#   3. Postgres cluster attached via:             fly postgres attach vigil-db --app vigil-backend
+#   4. Secrets set via:                           fly secrets set SECRET_KEY=… SAM_GOV_API_KEY=… COURTLISTENER_API_KEY=…
+#
+# Region: iad (US East) — close to most law firm offices on the east coast and to
+# the CMS/OIG data sources we hit.  Change if your first customer is on the west coast.
+
+app           = "vigil-backend"
+primary_region = "iad"
+
+# No [build] section — `fly deploy` is invoked from `backend/` (see
+# deploy.sh) so the build context is `backend/` and Fly auto-detects the
+# Dockerfile there.  This matches what the COPY commands in
+# backend/Dockerfile expect.
+
+[env]
+  # Production runtime — disables SQL echo, debug error pages, etc.
+  APP_ENV                      = "production"
+  ALGORITHM                    = "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES  = "30"
+  REFRESH_TOKEN_EXPIRE_DAYS    = "30"
+  STORAGE_PATH                 = "/data/documents"
+  # CORS — comma-separated list of allowed origins.  Override per environment.
+  CORS_ORIGINS                 = '["https://demo.vigilfraud.com"]'
+  # PYTHONUNBUFFERED ensures uvicorn logs reach Fly's log aggregator immediately.
+  PYTHONUNBUFFERED             = "1"
+
+[http_service]
+  internal_port       = 8000
+  force_https         = true
+  auto_stop_machines  = "stop"     # Save money: idle machines sleep
+  auto_start_machines = true       # Wake on incoming traffic (cold start ~2s)
+  min_machines_running = 0         # Bump to 1 once we have a real customer
+
+  [http_service.concurrency]
+    type       = "requests"
+    soft_limit = 25
+    hard_limit = 50
+
+  # Health check — Vigil exposes /api/health for liveness
+  [[http_service.checks]]
+    grace_period  = "30s"
+    interval      = "30s"
+    method        = "GET"
+    path          = "/api/health"
+    protocol      = "http"
+    timeout       = "5s"
+
+# Persistent volume for uploaded case documents.  PostgreSQL data lives in
+# the attached Fly Postgres cluster (separate app), not here.
+[mounts]
+  source      = "vigil_data"
+  destination = "/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"   # Plenty for the FastAPI process; bump if scoring SHAP at scale
