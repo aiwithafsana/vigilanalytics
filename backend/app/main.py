@@ -19,6 +19,8 @@ from app.routers import alerts
 from app.routers import ws as ws_router
 from app.routers import system as system_router
 from app.routers import agents as agents_router
+from app.routers import clusters as clusters_router
+from app.routers import lead_packs as lead_packs_router
 from app.middleware.audit import AuditMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 
@@ -168,6 +170,8 @@ app.include_router(network.router, prefix="/api/network", tags=["network"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(ws_router.router, prefix="/api", tags=["realtime"])
 app.include_router(system_router.router, prefix="/api/system", tags=["system"])
+app.include_router(clusters_router.router, prefix="/api/clusters", tags=["clusters"])
+app.include_router(lead_packs_router.router, prefix="/api/lead-packs", tags=["lead-packs"])
 app.include_router(agents_router.router, prefix="/api/agents", tags=["agents"])
 
 
