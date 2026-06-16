@@ -117,6 +117,17 @@ class Provider(Base):
     enrollment_date = Column(Date, nullable=True)  # from PECOS
     is_opt_out = Column(Boolean, default=False)    # opted out of Medicare
 
+    # Practice-address columns (from NPPES Business Practice Location).
+    # These power the address-clustering feature — multiple providers
+    # registered at the same physical address is one of the strongest
+    # shell-entity / phantom-billing signals.  Backfilled by the
+    # ingest_nppes pipeline; NULL until NPPES enrichment runs.
+    street_address      = Column(String(200))   # e.g. "1234 W Pico Blvd Suite 200"
+    practice_zip        = Column(String(10))    # 5- or 9-digit ZIP
+    # Lowercased + whitespace-normalised address used for cluster lookup.
+    # Indexed for fast cluster-size queries.  Computed during ingest.
+    address_normalized  = Column(String(255), index=True)
+
     # Computed risk fields (set after scoring)
     risk_tier = Column(SmallInteger)           # 1=critical, 2=high, 3=medium, 4=low
     flag_count = Column(SmallInteger, default=0)   # count of active fraud flags

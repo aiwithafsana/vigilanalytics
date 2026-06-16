@@ -107,13 +107,22 @@ CHUNK_ROWS = 200_000
 
 # Mapping from NPPES column names to our normalized names.  NPPES uses
 # extremely verbose column headers; we slim them down here.
+#
+# Practice-location address fields are critical: they power the
+# address-clustering feature that detects shell-entity / phantom-billing
+# patterns ("12 hospice agencies registered at one strip-mall address").
 COL_MAP = {
     "NPI":                                                "npi",
     "Provider Enumeration Date":                          "enumeration_date",
     "Entity Type Code":                                   "entity_type",
     "Healthcare Provider Taxonomy Code_1":                "taxonomy_primary",
     "Is Sole Proprietor":                                 "is_sole_proprietor",
-    "Provider Business Practice Location Address State Name": "nppes_state",
+    # Practice-location address fields (used for address clustering)
+    "Provider First Line Business Practice Location Address":  "practice_addr_line1",
+    "Provider Second Line Business Practice Location Address": "practice_addr_line2",
+    "Provider Business Practice Location Address City Name":   "practice_city",
+    "Provider Business Practice Location Address State Name":  "nppes_state",
+    "Provider Business Practice Location Address Postal Code": "practice_zip",
 }
 
 
@@ -214,7 +223,90 @@ def _post_process(df: pd.DataFrame) -> pd.DataFrame:
     df["is_sole_proprietor"] = (df["is_sole_proprietor"].str.upper() == "Y").astype(int)
     # entity_type already 1/2 strings — cast to int for cleanliness
     df["entity_type"] = pd.to_numeric(df["entity_type"], errors="coerce").fillna(0).astype(int)
+
+    # ── Address normalization ─────────────────────────────────────────────
+    # Build the canonical `address_normalized` key used for clustering.
+    # Goal: two providers at the same physical location collapse to the
+    # same key regardless of formatting differences ("Suite 200" vs
+    # "STE 200", trailing periods, double spaces, etc.).
+    df["street_address"] = _compose_street(df)
+    df["practice_zip"]   = df["practice_zip"].fillna("").astype(str).str.strip().str[:10]
+    df["address_normalized"] = (
+        df["street_address"].fillna("").astype(str).map(_normalize_address)
+        + "|"
+        + df["practice_city"].fillna("").astype(str).map(_normalize_token)
+        + "|"
+        + df["nppes_state"].fillna("").astype(str).str.strip().str.upper().str[:2]
+        + "|"
+        + df["practice_zip"].str[:5]
+    )
+    # Treat an obviously-empty normalized key as None so it never clusters
+    df.loc[df["street_address"].fillna("").str.len() < 4, "address_normalized"] = None
     return df
+
+
+# ── Address normalization helpers ─────────────────────────────────────────────
+# Designed to be conservative: we never invent addresses, only standardize
+# obvious formatting variations.  False positives in clustering are far
+# worse than false negatives — if we're unsure, leave the address alone.
+
+_ADDR_SUFFIX_MAP = {
+    r"\bstreet\b":    "st",
+    r"\bavenue\b":    "ave",
+    r"\bboulevard\b": "blvd",
+    r"\broad\b":      "rd",
+    r"\bdrive\b":     "dr",
+    r"\bcourt\b":     "ct",
+    r"\bplace\b":     "pl",
+    r"\blane\b":      "ln",
+    r"\bhighway\b":   "hwy",
+    r"\bparkway\b":   "pkwy",
+    r"\bsuite\b":     "ste",
+    r"\bnumber\b":    "no",
+    r"\bapartment\b": "apt",
+    r"\bfloor\b":     "fl",
+}
+import re as _re
+
+def _compose_street(df: pd.DataFrame) -> pd.Series:
+    """Join address line 1 + line 2 with a single space, trimmed."""
+    line1 = df.get("practice_addr_line1", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    line2 = df.get("practice_addr_line2", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    composed = line1 + (" " + line2).where(line2.ne(""), "")
+    return composed.str.replace(r"\s+", " ", regex=True).str.strip()
+
+
+def _normalize_token(s: str) -> str:
+    """Lowercase + strip + collapse whitespace for city/state tokens."""
+    if not isinstance(s, str):
+        return ""
+    return _re.sub(r"\s+", " ", s.lower().strip())
+
+
+def _normalize_address(s: str) -> str:
+    """
+    Canonicalize a street address for cluster-key matching.
+
+    Operations (all conservative):
+      - lowercase
+      - collapse whitespace
+      - strip trailing punctuation
+      - apply known suffix abbreviations (Street → st, Suite → ste, etc.)
+      - remove '#' and 'no.' prefixes from unit numbers
+
+    Returns "" for inputs too short to be a real address.
+    """
+    if not isinstance(s, str) or len(s) < 4:
+        return ""
+    out = s.lower().strip()
+    out = _re.sub(r"[.,;]", " ", out)
+    out = _re.sub(r"\s+", " ", out)
+    for pat, repl in _ADDR_SUFFIX_MAP.items():
+        out = _re.sub(pat, repl, out)
+    # Remove unit-number prefix markers so "ste 200", "# 200", "no 200" collapse
+    out = _re.sub(r"\b(#|no\.?)\s*", "", out)
+    out = _re.sub(r"\s+", " ", out).strip()
+    return out
 
 
 def run(local_csv: str | None = None, url: str | None = None) -> Path:
@@ -270,6 +362,8 @@ def run(local_csv: str | None = None, url: str | None = None) -> Path:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Ingest NPPES enrichment for CMS providers")
     p.add_argument("--local", help="Path to a local NPPES npidata_pfile_*.csv (skips download)")
-    p.add_argument("--url",   default=NPPES_DOWNLOAD_URL, help="NPPES zip URL")
+    # Default to None so run() auto-detects the latest available snapshot URL.
+    # Pass --url explicitly only when overriding for a specific historical month.
+    p.add_argument("--url", default=None, help="NPPES zip URL (auto-detect if omitted)")
     args = p.parse_args()
     run(local_csv=args.local, url=args.url)
