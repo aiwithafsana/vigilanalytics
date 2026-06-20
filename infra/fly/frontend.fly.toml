@@ -20,7 +20,7 @@ primary_region = "iad"
   # during `next build`, so this value must be present at build time, not
   # just at runtime.
   [build.args]
-    NEXT_PUBLIC_API_URL = "https://api.vigilfraud.com"
+    NEXT_PUBLIC_API_URL = "https://api.vigil-investigations.com"
 
 [env]
   NODE_ENV = "production"

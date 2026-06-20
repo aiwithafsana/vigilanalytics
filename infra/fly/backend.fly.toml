@@ -28,7 +28,7 @@ primary_region = "iad"
   REFRESH_TOKEN_EXPIRE_DAYS    = "30"
   STORAGE_PATH                 = "/data/documents"
   # CORS — comma-separated list of allowed origins.  Override per environment.
-  CORS_ORIGINS                 = '["https://demo.vigilfraud.com"]'
+  CORS_ORIGINS                 = '["https://demo.vigil-investigations.com"]'
   # PYTHONUNBUFFERED ensures uvicorn logs reach Fly's log aggregator immediately.
   PYTHONUNBUFFERED             = "1"
 

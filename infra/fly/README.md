@@ -1,14 +1,14 @@
 # Deploying Vigil to Fly.io
 
-This is the step-by-step playbook to get `demo.vigilfraud.com` live for design-partner demos.  Total time: **~2 hours of focused work**, ~$30/month ongoing.
+This is the step-by-step playbook to get `demo.vigil-investigations.com` live for design-partner demos.  Total time: **~2 hours of focused work**, ~$30/month ongoing.
 
 ## Architecture
 
 ```
 Cloudflare DNS                   Fly.io (region: iad)
 ─────────────                    ───────────────────
-demo.vigilfraud.com  ──CNAME──►  vigil-frontend.fly.dev  (Next.js)
-api.vigilfraud.com   ──CNAME──►  vigil-backend.fly.dev   (FastAPI) ──► vigil-db (Postgres)
+demo.vigil-investigations.com  ──CNAME──►  vigil-frontend.fly.dev  (Next.js)
+api.vigil-investigations.com   ──CNAME──►  vigil-backend.fly.dev   (FastAPI) ──► vigil-db (Postgres)
 ```
 
 ## Cost estimate
@@ -19,7 +19,7 @@ api.vigilfraud.com   ──CNAME──►  vigil-backend.fly.dev   (FastAPI) ─
 | Frontend VM | shared-cpu-1x, 512MB, auto-stop when idle | ~$5/mo |
 | Postgres | shared-cpu-1x, 1GB, 1× volume | ~$15/mo |
 | Bandwidth | first 160GB free | $0 |
-| Domain | vigilfraud.com on Namecheap or Cloudflare Registrar | ~$1/mo amortized |
+| Domain | vigil-investigations.com on Namecheap or Cloudflare Registrar | ~$1/mo amortized |
 | **Total** | | **~$26/mo** |
 
 ---
@@ -29,7 +29,7 @@ api.vigilfraud.com   ──CNAME──►  vigil-backend.fly.dev   (FastAPI) ─
 ### Step 0 — Prereqs (15 min)
 
 - Sign up at https://fly.io (use credit card; first $5/mo of usage covered by free tier)
-- Buy `vigilfraud.com` (or your chosen domain) — Cloudflare Registrar is cheapest at-cost pricing
+- Buy `vigil-investigations.com` (or your chosen domain) — Cloudflare Registrar is cheapest at-cost pricing
 - Install the Fly CLI:
   ```bash
   curl -L https://fly.io/install.sh | sh
@@ -100,7 +100,7 @@ You already have those API keys in `backend/.env` from earlier setup — copy th
 This script:
 1. Builds the backend Docker image on Fly's remote builder
 2. Deploys backend; on first boot, `entrypoint.sh` runs Alembic migrations against the empty Postgres
-3. Builds the frontend with `NEXT_PUBLIC_API_URL=https://api.vigilfraud.com` baked in
+3. Builds the frontend with `NEXT_PUBLIC_API_URL=https://api.vigil-investigations.com` baked in
 4. Deploys frontend
 
 After a successful deploy, smoke-test:
@@ -130,7 +130,7 @@ async def main():
     async with AsyncSessionLocal() as db:
         user = User(
             id=uuid.uuid4(),
-            email='demo@vigilfraud.com',
+            email='demo@vigil-investigations.com',
             hashed_password=await hash_password('DemoPass2026!'),
             name='Demo User',
             role='admin',
@@ -139,7 +139,7 @@ async def main():
         )
         db.add(user)
         await db.commit()
-        print('Created: demo@vigilfraud.com / DemoPass2026!')
+        print('Created: demo@vigil-investigations.com / DemoPass2026!')
 
 asyncio.run(main())
 "
@@ -153,15 +153,15 @@ You'll change this password for real prospects before each demo.
 #### On Fly:
 
 ```bash
-fly certs add demo.vigilfraud.com  --app vigil-frontend
-fly certs add api.vigilfraud.com   --app vigil-backend
+fly certs add demo.vigil-investigations.com  --app vigil-frontend
+fly certs add api.vigil-investigations.com   --app vigil-backend
 ```
 
 Fly will print the DNS records you need.  Note them.
 
 #### On Cloudflare:
 
-1. Add `vigilfraud.com` as a Cloudflare site (if not already)
+1. Add `vigil-investigations.com` as a Cloudflare site (if not already)
 2. Add CNAME records:
    - `demo` → `vigil-frontend.fly.dev` (Proxy: off — Fly handles TLS itself)
    - `api`  → `vigil-backend.fly.dev` (Proxy: off)
@@ -170,10 +170,10 @@ Fly will print the DNS records you need.  Note them.
 Wait ~5 minutes for DNS propagation, then verify:
 
 ```bash
-fly certs show demo.vigilfraud.com --app vigil-frontend
+fly certs show demo.vigil-investigations.com --app vigil-frontend
 # expected: "Status: Ready"
 
-open https://demo.vigilfraud.com
+open https://demo.vigil-investigations.com
 # expected: Vigil login page on your custom domain
 ```
 
@@ -235,8 +235,8 @@ After the one-time setup, every deploy is just:
 ### Backend 502s
 - Usually the Postgres connection died.  Restart with `fly apps restart vigil-backend`.
 
-### "Cannot reach api.vigilfraud.com"
-- Run `fly certs show api.vigilfraud.com --app vigil-backend` — if status is anything other than "Ready", check the Cloudflare CNAME record matches what Fly suggested.
+### "Cannot reach api.vigil-investigations.com"
+- Run `fly certs show api.vigil-investigations.com --app vigil-backend` — if status is anything other than "Ready", check the Cloudflare CNAME record matches what Fly suggested.
 
 ### Out of memory
 - Bump the backend VM in `backend.fly.toml`: `memory = "1gb"`, redeploy.  +$5/mo.
@@ -247,7 +247,7 @@ After the one-time setup, every deploy is just:
 
 Before sending the URL to a real prospect:
 
-- [ ] Change `demo@vigilfraud.com` password to something not in this README
+- [ ] Change `demo@vigil-investigations.com` password to something not in this README
 - [ ] Set `CORS_ORIGINS` to only your demo domain
 - [ ] Disable user-signup endpoints in the frontend (we don't want random people creating accounts)
 - [ ] Verify `force_https = true` in both fly.toml files
@@ -259,7 +259,7 @@ The first three are checked into the configs above.  The MFA decision is per-dem
 
 ## What this does NOT cover (deferred)
 
-- **Custom-domain email** (e.g., afsana@vigilfraud.com) — use Fastmail or Google Workspace, $6/mo
+- **Custom-domain email** (e.g., afsana@vigil-investigations.com) — use Fastmail or Google Workspace, $6/mo
 - **CDN caching** — Cloudflare is in the path but proxy is off; turn on for marketing pages later
 - **Multi-region** — single region (`iad`) is fine until you have customers on the west coast
 - **Staging environment** — deferred until customer #2.  Use a feature branch + local testing for now.
