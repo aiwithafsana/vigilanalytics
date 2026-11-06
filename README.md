@@ -1,22 +1,28 @@
 # Vigil National Fraud Graph
 
 Session setup (Gate 0) and acquisition (Phase A / Stage 0) are complete.
-Stages 1–5 are not implemented. The next session is Phase B normalization.
-See [Phase A acceptance evidence](docs/PHASE_A.md).
+Phase B normalization is implemented and fixture-tested, but its real-data
+acceptance gate is blocked: 333,609 of 9,368,082 NPPES records have empty
+normalized names (3.5611%; the required rate is below 0.5%). No canonical files
+were published by the failed production run. Stages 2–5 are not implemented.
+See [Phase A evidence](docs/PHASE_A.md) and [Phase B gate report](docs/PHASE_B.md).
 
 ## Setup and commands
 
-Python 3.11+ is required. Acquisition uses the standard library; pytest is the
-development dependency. No graph, analytics, or ML dependencies are installed
-at this phase.
+Python 3.11+ is required. Acquisition uses the standard library; normalization
+uses DuckDB and usaddress. pandas supplies the NumPy runtime required by DuckDB
+Python functions. pytest is the development dependency; graph analytics are
+not installed. Runtime versions are pinned in `requirements.txt`.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install 'pytest>=8,<10'
+.venv/bin/python -m pip install -r requirements.txt 'pytest>=8,<10'
 .venv/bin/python -m pytest
 .venv/bin/python pipeline.py status
 .venv/bin/python pipeline.py status --verify
 .venv/bin/python pipeline.py --through stage0
+# Currently exits nonzero on the documented NPPES quality gate:
+.venv/bin/python pipeline.py --through stage1
 ```
 
 For this checkout, the existing environment is `../../work/venv` instead of
@@ -32,7 +38,9 @@ fetching a 2015 dataset today does not make its observations current.
 `--through stage0` verifies and reuses the latest available vintage of each
 source. All four required sources must be present. Missing optional sources are
 reported explicitly. Acquire new vintages with `fetch` or `import` before running
-the stage. Later `--through` targets fail without running partial later stages.
+the stage. `--through stage1` verifies all sealed vintages before consuming them,
+enforces quality gates, and publishes only after all normalization succeeds.
+Later `--through` targets fail without running partial later stages.
 
 ## Acquisition
 
@@ -104,3 +112,28 @@ original path, acquisition method/time, provenance URL, and digest. For legacy
 local files the acquisition timestamp means transfer into this repo, while the
 original download time remains explicitly unknown. Wall-clock timestamps occur
 only in manifests. Raw and generated data are gitignored.
+
+
+## Phase B normalization
+
+One module per source produces typed canonical tables. All raw access is confined
+to `ingest/inputs.py`: normalizers receive DuckDB staging tables. The adapter
+preserves source row order and explicitly transcodes legacy Windows-1252 PECOS
+files only when complete UTF-8 validation fails. It never skips malformed rows.
+
+The canonical tables are `providers`, `addresses`, `exclusions`,
+`billing_summaries`, `ownerships`, and `shared_patients`. A supplementary
+`provider_identifiers` table retains PECOS PAC/associate IDs for future ownership
+joins without reading raw files downstream. Stable record IDs contain the source,
+vintage, filename, and physical CSV row ordinal. No entity resolution runs here.
+
+Canonical files use `data/canonical/<table>/<vintage>.parquet` (data year for
+billing/shared-patient tables). A missing optional table gets a typed empty
+`empty.parquet`. Text keys are empty strings when missing; numeric/date values
+are NULL. Records are sorted before single-threaded, fixed-row-group Parquet
+writing. Each source prints row counts and missing-value rates, counting empty
+text alongside SQL NULLs. Fixture tests compare hashes from two complete runs.
+
+The NPPES name gate remains **strictly below 0.5%**. The current February vintage
+fails and must be resolved before Phase B can be accepted. The full failed run
+never reached canonical publication or a real-data determinism check.

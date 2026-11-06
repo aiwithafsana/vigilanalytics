@@ -165,7 +165,7 @@ def test_cli_status_and_missing_gate(capsys):
     assert all(source in output for source in ['nppes', 'leie', 'cms_part_b', 'shared_patients', 'pecos', 'sam'])
     assert main(['--through', 'stage0']) == 1
     assert 'missing required' in capsys.readouterr().err
-    assert main(['--through', 'stage1']) == 1
+    assert main(['--through', 'stage2']) == 1
 
 
 def test_leie_automatic_download_is_sealed(tmp_path, monkeypatch):

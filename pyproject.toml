@@ -2,7 +2,7 @@
 name = "vigil-graph"
 version = "0.0.0"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["duckdb==2.0.0", "pandas==3.1.1", "usaddress==0.5.16", "jellyfish==1.3.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
