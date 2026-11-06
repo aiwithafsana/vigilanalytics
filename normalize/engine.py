@@ -11,6 +11,9 @@ from ingest.acquisition import data_root
 from ingest.inputs import qi, sql_literal
 
 SCHEMAS = {
+    'npi_status': [('record_id','VARCHAR'),('source','VARCHAR'),('vintage','VARCHAR'),('npi','VARCHAR'),
+                   ('status','VARCHAR'),('deactivation_date','DATE'),('reactivation_date','DATE'),
+                   ('identity_suppressed','BOOLEAN')],
     'provider_identifiers': [('record_id','VARCHAR'),('id_type','VARCHAR'),('id_value','VARCHAR'),('source','VARCHAR'),('vintage','VARCHAR')],
     'providers': [('record_id','VARCHAR'),('source','VARCHAR'),('vintage','VARCHAR'),('npi','VARCHAR'),
                   ('entity_type','INTEGER'),('name_raw','VARCHAR'),('name_norm','VARCHAR'),
@@ -32,7 +35,7 @@ SCHEMAS = {
                    ('effective_date','DATE')],
     'shared_patients': [('npi_a','VARCHAR'),('npi_b','VARCHAR'),('shared_count','BIGINT'),('year','INTEGER')],
 }
-SORT_KEYS = {'provider_identifiers':'record_id, id_type, id_value', 'providers':'record_id', 'addresses':'record_id, addr_type',
+SORT_KEYS = {'npi_status':'record_id', 'provider_identifiers':'record_id, id_type, id_value', 'providers':'record_id', 'addresses':'record_id, addr_type',
              'exclusions':'record_id', 'billing_summaries':'npi, year',
              'ownerships':'record_id', 'shared_patients':'npi_a, npi_b, year'}
 

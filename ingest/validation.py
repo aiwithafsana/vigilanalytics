@@ -18,6 +18,7 @@ class ValidationError(ValueError):
 NPPES_COLUMNS = {
     'NPI', 'Entity Type Code', 'Provider Organization Name (Legal Business Name)',
     'Provider Last Name (Legal Name)', 'Provider First Name', 'Provider Enumeration Date',
+    'NPI Deactivation Date', 'NPI Reactivation Date',
     'Provider First Line Business Practice Location Address',
     'Provider Second Line Business Practice Location Address',
     'Provider Business Practice Location Address City Name',

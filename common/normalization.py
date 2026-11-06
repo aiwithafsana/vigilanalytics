@@ -22,6 +22,7 @@ def clean_text(raw: str | None) -> str:
     return ' '.join(re.sub(r'[^\w\s]', ' ', text, flags=re.UNICODE).replace('_', ' ').split())
 
 
+@lru_cache(maxsize=200_000)
 def normalize_name(raw: str | None) -> str:
     text = unicodedata.normalize('NFKC', str(raw or '')).upper()
     text = re.sub(r'\b(M|D|P)\.(D|O|C)\.?\b', lambda m: m[1] + m[2], text)
@@ -38,6 +39,7 @@ def normalize_name(raw: str | None) -> str:
     return strip(text)
 
 
+@lru_cache(maxsize=200_000)
 def normalize_phone(raw: str | None) -> str:
     text = re.split(r'(?i)\b(?:ext\.?|extension|x)\s*\d+', str(raw or ''))[0]
     digits = re.sub(r'\D', '', text)
@@ -46,6 +48,7 @@ def normalize_phone(raw: str | None) -> str:
     return digits if len(digits) == 10 else ''
 
 
+@lru_cache(maxsize=20_000)
 def zip5(raw: str | None) -> str:
     match = re.match(r'^\s*(\d{5})(?:[-\s]?\d{4})?\s*$', str(raw or ''))
     return match[1] if match else ''

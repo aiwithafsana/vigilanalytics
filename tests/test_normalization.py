@@ -191,3 +191,58 @@ def test_real_input_adapter_rejects_unsealed_vintage(tmp_path,monkeypatch):
         inputs=SealedInputs(c,tmp_path/'scratch')
         with pytest.raises(ValueError,match='Unsealed'):
             inputs.vintages('nppes')
+
+
+def add_nppes_vintage(sealed_sources, rows, *, extra_columns=()):
+    original=sealed_sources/'originals/npidata_pfile_20050523-20260208.csv'
+    with original.open(newline='') as stream:
+        reader=csv.DictReader(stream)
+        active=next(reader)
+        columns=list(reader.fieldnames)+list(extra_columns)
+    path=write_csv(sealed_sources/'originals/npidata_pfile_20050523-20260308.csv',columns,[active,*rows])
+    import_files('nppes','2026-03',{path.name:path})
+
+
+def test_documented_deactivations_preserved_without_failing_identity_gate(sealed_sources):
+    tombstones=[{'NPI':str(2345678900+i),'NPI Deactivation Date':'01/01/2020'} for i in range(20)]
+    add_nppes_vintage(sealed_sources,tombstones)
+    paths=run(sealed_sources/'canonical')
+    with duckdb.connect() as c:
+        providers=str(sealed_sources/'canonical/providers/2026-03.parquet')
+        statuses=str(sealed_sources/'canonical/npi_status/2026-03.parquet')
+        assert c.execute('SELECT count(*) FROM read_parquet(?)',[providers]).fetchone()[0]==21
+        rows=c.execute('SELECT status,identity_suppressed,count(*) FROM read_parquet(?) GROUP BY 1,2 ORDER BY 1',[statuses]).fetchall()
+        assert rows==[('deactivated_suppressed',True,20),('no_deactivation_reported',False,1)]
+        # Identity and lifecycle data retain the exact same stable record IDs.
+        assert c.execute('SELECT count(*) FROM read_parquet(?) p JOIN read_parquet(?) s USING(record_id) WHERE s.identity_suppressed AND p.name_norm=\'\'',[providers,statuses]).fetchone()[0]==20
+        assert c.execute('SELECT count(*) FROM read_parquet(?) WHERE deactivation_date=DATE \'2020-01-01\'',[statuses]).fetchone()[0]==20
+
+
+@pytest.mark.parametrize('changes,extras',[
+    ({'NPI Deactivation Date':''},()),
+    ({'NPI Reactivation Date':'02/01/2020'},()),
+    ({'Provider Enumeration Date':'05/23/2005'},()),
+    ({'Provider Credential Text':'MD'},('Provider Credential Text',)),
+    ({'Provider Business Practice Location Address Telephone Number':'2125550123'},()),
+])
+def test_unexplained_nameless_records_still_count_against_same_gate(sealed_sources,changes,extras):
+    row={'NPI':'2345678901','NPI Deactivation Date':'01/01/2020',**changes}
+    add_nppes_vintage(sealed_sources,[row],extra_columns=extras)
+    with pytest.raises(ValueError,match='violates <0.5%'):
+        run(sealed_sources/'canonical')
+    assert not (sealed_sources/'canonical').exists()
+
+
+@pytest.mark.parametrize('identity_rows,passes',[(200,False),(201,True)])
+def test_identity_name_gate_keeps_strict_point_five_percent_boundary(sealed_sources,identity_rows,passes):
+    # add_nppes_vintage includes one named record; one row below is nameless.
+    named=[{'NPI':str(3456700000+i),'Entity Type Code':'1',
+            'Provider First Name':'Jane','Provider Last Name (Legal Name)':'Smith'}
+           for i in range(identity_rows-2)]
+    add_nppes_vintage(sealed_sources,[*named,{'NPI':'4567890123','Entity Type Code':'1'}])
+    if passes:
+        run(sealed_sources/'canonical')
+    else:
+        with pytest.raises(ValueError,match='violates <0.5%'):
+            run(sealed_sources/'canonical')
+        assert not (sealed_sources/'canonical').exists()
