@@ -10,3 +10,4 @@ data/resolved/*
 !data/resolved/.gitkeep
 data/graph/*
 !data/graph/.gitkeep
+work/
