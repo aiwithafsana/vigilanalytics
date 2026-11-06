@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+data/raw/*
+!data/raw/.gitkeep
+data/canonical/*
+!data/canonical/.gitkeep
+data/resolved/*
+!data/resolved/.gitkeep
+data/graph/*
+!data/graph/.gitkeep
