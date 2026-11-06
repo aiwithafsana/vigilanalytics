@@ -1,4 +1,4 @@
-"""Deterministic batch DAG entry point. Phase A implements acquisition only."""
+"""Deterministic batch DAG entry point for acquisition and guarded normalization."""
 import argparse
 import importlib
 from pathlib import Path
@@ -64,10 +64,13 @@ def main(argv: list[str] | None = None) -> int:
             import_files(args.source, args.vintage,
                          {k: Path(v) for k, v in _assignments(args.file).items()},
                          source_urls=_assignments(args.source_url))
+        elif args.through == 'stage1':
+            from normalize.run import run
+            run()
         elif args.through == 'stage0':
             run_stage0()
         elif args.through:
-            raise AcquisitionError(f'{args.through} is not implemented; stop after Phase A. No later stage was run.')
+            raise AcquisitionError(f'{args.through} is not implemented; stop after Phase B. No later stage was run.')
         else:
             parser.print_help()
             return 2
