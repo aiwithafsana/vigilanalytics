@@ -21,6 +21,22 @@ def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def nppes_suppression_predicate(columns: list[str]) -> str:
+    """Match only CMS's documented NPI/date-only deactivation records.
+
+    Check every input column, not just name or entity type. A nameless active,
+    reactivated, partially populated, or malformed record is never exempted.
+    """
+    if not {'NPI', 'NPI Deactivation Date'} <= set(columns):
+        raise ValueError('NPPES lifecycle columns are required')
+    blank = ' AND '.join(f"coalesce(trim({qi(name)}), '')=''"
+                         for name in columns if name not in {'NPI', 'NPI Deactivation Date'})
+    return (f"CASE WHEN regexp_full_match(trim({qi('NPI')}), '[0-9]{{10}}') "
+            f"AND trim({qi('NPI')}) <> '0000000000' "
+            f"AND try_strptime(nullif(trim({qi('NPI Deactivation Date')}), ''), '%m/%d/%Y') IS NOT NULL "
+            f"THEN ({blank}) ELSE false END")
+
+
 class SealedInputs:
     def __init__(self, connection, scratch: Path):
         self.connection = connection
@@ -86,6 +102,10 @@ class SealedInputs:
         options = 'header=true, all_varchar=true, delim=\',\', parallel=false, strict_mode=true'
         if not header:
             options = "header=false, columns={'npi_a':'VARCHAR','npi_b':'VARCHAR','pair_count':'VARCHAR','bene_count':'VARCHAR','same_day_count':'VARCHAR'}, delim=',', parallel=false, strict_mode=true"
-        query = f'SELECT row_number() OVER ()::BIGINT AS _row, {projection} FROM read_csv({sql_literal(str(path))}, {options})'
+        reader = f'read_csv({sql_literal(str(path))}, {options})'
+        if source == 'nppes':
+            headers = [row[0] for row in self.connection.execute(f'DESCRIBE SELECT * FROM {reader}').fetchall()]
+            projection += f', {nppes_suppression_predicate(headers)} AS _identity_suppressed'
+        query = f'SELECT row_number() OVER ()::BIGINT AS _row, {projection} FROM {reader}'
         self.connection.execute(f'CREATE TABLE {name} AS {query}')
         return name

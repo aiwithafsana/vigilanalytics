@@ -113,8 +113,12 @@ def sealed_sources(tmp_path,monkeypatch):
     return tmp_path
 
 
-def test_all_canonical_tables_types_evidence_and_byte_determinism(sealed_sources):
+def test_all_canonical_tables_types_evidence_and_byte_determinism(sealed_sources,monkeypatch):
+    from normalize import addresses
+    monkeypatch.setenv('VIGIL_ADDRESS_WORKERS','1')
     paths=run(sealed_sources/'canonical-first')
+    monkeypatch.setenv('VIGIL_ADDRESS_WORKERS','2')
+    monkeypatch.setattr(addresses,'PARALLEL_THRESHOLD',0)
     repeated=run(sealed_sources/'canonical-second')
     def hashes(items,base):
         return {str(p.relative_to(base)):hashlib.sha256(p.read_bytes()).hexdigest() for p in items}
@@ -191,3 +195,85 @@ def test_real_input_adapter_rejects_unsealed_vintage(tmp_path,monkeypatch):
         inputs=SealedInputs(c,tmp_path/'scratch')
         with pytest.raises(ValueError,match='Unsealed'):
             inputs.vintages('nppes')
+
+
+def add_nppes_vintage(sealed_sources, rows, *, extra_columns=()):
+    original=sealed_sources/'originals/npidata_pfile_20050523-20260208.csv'
+    with original.open(newline='') as stream:
+        reader=csv.DictReader(stream)
+        active=next(reader)
+        columns=list(reader.fieldnames)+list(extra_columns)
+    path=write_csv(sealed_sources/'originals/npidata_pfile_20050523-20260308.csv',columns,[active,*rows])
+    import_files('nppes','2026-03',{path.name:path})
+
+
+def test_documented_deactivations_preserved_without_failing_identity_gate(sealed_sources):
+    tombstones=[{'NPI':str(2345678900+i),'NPI Deactivation Date':'01/01/2020'} for i in range(20)]
+    add_nppes_vintage(sealed_sources,tombstones)
+    paths=run(sealed_sources/'canonical')
+    with duckdb.connect() as c:
+        providers=str(sealed_sources/'canonical/providers/2026-03.parquet')
+        statuses=str(sealed_sources/'canonical/npi_status/2026-03.parquet')
+        assert c.execute('SELECT count(*) FROM read_parquet(?)',[providers]).fetchone()[0]==21
+        rows=c.execute('SELECT status,identity_suppressed,count(*) FROM read_parquet(?) GROUP BY 1,2 ORDER BY 1',[statuses]).fetchall()
+        assert rows==[('deactivated_suppressed',True,20),('no_deactivation_reported',False,1)]
+        # Identity and lifecycle data retain the exact same stable record IDs.
+        assert c.execute('SELECT count(*) FROM read_parquet(?) p JOIN read_parquet(?) s USING(record_id) WHERE s.identity_suppressed AND p.name_norm=\'\'',[providers,statuses]).fetchone()[0]==20
+        assert c.execute('SELECT count(*) FROM read_parquet(?) WHERE deactivation_date=DATE \'2020-01-01\'',[statuses]).fetchone()[0]==20
+
+
+@pytest.mark.parametrize('changes,extras',[
+    ({'NPI Deactivation Date':''},()),
+    ({'NPI Reactivation Date':'02/01/2020'},()),
+    ({'Provider Enumeration Date':'05/23/2005'},()),
+    ({'Provider Credential Text':'MD'},('Provider Credential Text',)),
+    ({'Provider Business Practice Location Address Telephone Number':'2125550123'},()),
+])
+def test_unexplained_nameless_records_still_count_against_same_gate(sealed_sources,changes,extras):
+    row={'NPI':'2345678901','NPI Deactivation Date':'01/01/2020',**changes}
+    add_nppes_vintage(sealed_sources,[row],extra_columns=extras)
+    with pytest.raises(ValueError,match='violates <0.5%'):
+        run(sealed_sources/'canonical')
+    assert not (sealed_sources/'canonical').exists()
+
+
+@pytest.mark.parametrize('identity_rows,passes',[(200,False),(201,True)])
+def test_identity_name_gate_keeps_strict_point_five_percent_boundary(sealed_sources,identity_rows,passes):
+    # add_nppes_vintage includes one named record; one row below is nameless.
+    named=[{'NPI':str(3456700000+i),'Entity Type Code':'1',
+            'Provider First Name':'Jane','Provider Last Name (Legal Name)':'Smith'}
+           for i in range(identity_rows-2)]
+    add_nppes_vintage(sealed_sources,[*named,{'NPI':'4567890123','Entity Type Code':'1'}])
+    if passes:
+        run(sealed_sources/'canonical')
+    else:
+        with pytest.raises(ValueError,match='violates <0.5%'):
+            run(sealed_sources/'canonical')
+        assert not (sealed_sources/'canonical').exists()
+
+
+def test_address_completion_handles_wide_ids_under_small_memory_limit(tmp_path):
+    from normalize.engine import connect
+    from normalize import addresses
+    with connect(tmp_path/'bounded.duckdb') as c:
+        c.execute("SET memory_limit='64MB'")
+        addresses.initialize(c)
+        c.execute('CREATE TABLE address_source AS SELECT i FROM range(200000) t(i)')
+        addresses.add(c,'address_source',rid="repeat('X',2000)||i::VARCHAR",source='test',vintage='2026',npi="''",kind='practice',
+            line1="'123 Main St'",line2="'Suite '||(i%1000)::VARCHAR",city="'Boston'",state="'MA'",postal="'02110'")
+        addresses.finish(c)
+        assert c.execute('SELECT count(*),count(DISTINCT addr_key) FROM addresses').fetchone()==(200000,1000)
+        assert c.execute("SELECT count(*) FROM addresses WHERE addr_key='' OR record_id IS NULL").fetchone()[0]==0
+
+
+def test_address_completion_rejects_broken_positional_alignment(tmp_path):
+    from normalize.engine import connect
+    from normalize import addresses
+    with connect(tmp_path/'alignment.duckdb') as c:
+        addresses.initialize(c)
+        c.execute('CREATE TABLE address_source AS SELECT i FROM range(2) t(i)')
+        addresses.add(c,'address_source',rid="i::VARCHAR",source='test',vintage='2026',npi="''",kind='practice',
+            line1="'123 Main St'",line2="''",city="'Boston'",state="'MA'",postal="'02110'")
+        c.execute('DELETE FROM address_parts WHERE rowid=0')
+        with pytest.raises(ValueError,match='lost source-row alignment'):
+            addresses.finish(c)

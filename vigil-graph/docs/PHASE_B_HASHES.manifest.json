@@ -1,0 +1,929 @@
+{
+  "files": {
+    "addresses/2022.parquet": {
+      "bytes": 41501633,
+      "rows": 1230293,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "addr_type",
+          "VARCHAR"
+        ],
+        [
+          "addr_raw",
+          "VARCHAR"
+        ],
+        [
+          "addr_key",
+          "VARCHAR"
+        ],
+        [
+          "city",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "zip5",
+          "VARCHAR"
+        ],
+        [
+          "lat",
+          "DOUBLE"
+        ],
+        [
+          "lon",
+          "DOUBLE"
+        ]
+      ],
+      "sha256": "61c27bd8c6bcc26365c3b94a698b5da08e479af2a6f60ac6339a1e33738710a6"
+    },
+    "addresses/2026-02.parquet": {
+      "bytes": 537614276,
+      "rows": 18069034,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "addr_type",
+          "VARCHAR"
+        ],
+        [
+          "addr_raw",
+          "VARCHAR"
+        ],
+        [
+          "addr_key",
+          "VARCHAR"
+        ],
+        [
+          "city",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "zip5",
+          "VARCHAR"
+        ],
+        [
+          "lat",
+          "DOUBLE"
+        ],
+        [
+          "lon",
+          "DOUBLE"
+        ]
+      ],
+      "sha256": "a213d71644038d887afc63f6ac2e0c35723e6069517cb8e9c24fc35661f98b6e"
+    },
+    "addresses/2026-07-17.parquet": {
+      "bytes": 2092278,
+      "rows": 82640,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "addr_type",
+          "VARCHAR"
+        ],
+        [
+          "addr_raw",
+          "VARCHAR"
+        ],
+        [
+          "addr_key",
+          "VARCHAR"
+        ],
+        [
+          "city",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "zip5",
+          "VARCHAR"
+        ],
+        [
+          "lat",
+          "DOUBLE"
+        ],
+        [
+          "lon",
+          "DOUBLE"
+        ]
+      ],
+      "sha256": "9506b23beb0ad169058b5a5743359903818fc9fdeda665699193e22b59927180"
+    },
+    "addresses/2026-07-31.parquet": {
+      "bytes": 2522094,
+      "rows": 142276,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "addr_type",
+          "VARCHAR"
+        ],
+        [
+          "addr_raw",
+          "VARCHAR"
+        ],
+        [
+          "addr_key",
+          "VARCHAR"
+        ],
+        [
+          "city",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "zip5",
+          "VARCHAR"
+        ],
+        [
+          "lat",
+          "DOUBLE"
+        ],
+        [
+          "lon",
+          "DOUBLE"
+        ]
+      ],
+      "sha256": "74425b247f2a63497d7e0c935f2762d4d9da33dafb35e3ea4462380c9f653c77"
+    },
+    "addresses/2026-11-05.parquet": {
+      "bytes": 2860226,
+      "rows": 84089,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "addr_type",
+          "VARCHAR"
+        ],
+        [
+          "addr_raw",
+          "VARCHAR"
+        ],
+        [
+          "addr_key",
+          "VARCHAR"
+        ],
+        [
+          "city",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "zip5",
+          "VARCHAR"
+        ],
+        [
+          "lat",
+          "DOUBLE"
+        ],
+        [
+          "lon",
+          "DOUBLE"
+        ]
+      ],
+      "sha256": "9b3c940f5341636c0c50ecb8bfe7ef53f03a9c0753bad6a273841ae2bede397b"
+    },
+    "billing_summaries/2022.parquet": {
+      "bytes": 24257470,
+      "rows": 1230293,
+      "schema": [
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "year",
+          "INTEGER"
+        ],
+        [
+          "total_services",
+          "DOUBLE"
+        ],
+        [
+          "total_payment",
+          "DOUBLE"
+        ],
+        [
+          "unique_beneficiaries",
+          "BIGINT"
+        ],
+        [
+          "top_hcpcs",
+          "VARCHAR"
+        ],
+        [
+          "state",
+          "VARCHAR"
+        ],
+        [
+          "specialty",
+          "VARCHAR"
+        ]
+      ],
+      "sha256": "1e7d6e0ec9041062462129df0dda8dc69ea061c732e3c2b5789097b92dadcb9a"
+    },
+    "exclusions/2026-11-05.parquet": {
+      "bytes": 797380,
+      "rows": 84093,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "business_name",
+          "VARCHAR"
+        ],
+        [
+          "excl_type",
+          "VARCHAR"
+        ],
+        [
+          "excl_authority",
+          "VARCHAR"
+        ],
+        [
+          "fraud_related",
+          "BOOLEAN"
+        ],
+        [
+          "excl_date",
+          "DATE"
+        ],
+        [
+          "rein_date",
+          "DATE"
+        ],
+        [
+          "waiver_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "5bd173fd5f558790180a92012672cab5272e39b7efce576bee4c0fe98df59ed3"
+    },
+    "npi_status/2026-02.parquet": {
+      "bytes": 44054248,
+      "rows": 9368082,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "status",
+          "VARCHAR"
+        ],
+        [
+          "deactivation_date",
+          "DATE"
+        ],
+        [
+          "reactivation_date",
+          "DATE"
+        ],
+        [
+          "identity_suppressed",
+          "BOOLEAN"
+        ]
+      ],
+      "sha256": "08c342f03f62201d96c0811813cceef71c4512b81c0b24e81781915e1f6ed776"
+    },
+    "ownerships/2026-07-17.parquet": {
+      "bytes": 3131447,
+      "rows": 388255,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "org_npi_or_pac",
+          "VARCHAR"
+        ],
+        [
+          "owner_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "owner_role",
+          "VARCHAR"
+        ],
+        [
+          "pct_ownership",
+          "DOUBLE"
+        ],
+        [
+          "effective_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "d9a782f8667c36ce1a0a692c483340ff49c0a9c40d7740044d69d23bd1c637b7"
+    },
+    "ownerships/2026-07-31.parquet": {
+      "bytes": 3627105,
+      "rows": 441942,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "org_npi_or_pac",
+          "VARCHAR"
+        ],
+        [
+          "owner_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "owner_role",
+          "VARCHAR"
+        ],
+        [
+          "pct_ownership",
+          "DOUBLE"
+        ],
+        [
+          "effective_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "54aa11edd401b9654d27d09a1835f9a291ace946ce2abd15bfb8127a224d4d2e"
+    },
+    "provider_identifiers/2026-07-17.parquet": {
+      "bytes": 17897185,
+      "rows": 3401226,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "id_type",
+          "VARCHAR"
+        ],
+        [
+          "id_value",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ]
+      ],
+      "sha256": "7f87efaddd8ae6ed420bd27de2e1a91b3b467579c019e9eaa2063bfadb831e88"
+    },
+    "provider_identifiers/2026-07-31.parquet": {
+      "bytes": 1880660,
+      "rows": 465513,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "id_type",
+          "VARCHAR"
+        ],
+        [
+          "id_value",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ]
+      ],
+      "sha256": "e98afffae7157b918cf2c7cde6f694743468e09354b8523465b7568d22237dac"
+    },
+    "providers/2022.parquet": {
+      "bytes": 33905037,
+      "rows": 1230293,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "049f98c4aa53ae676f590de0fbd771c0313b9ace17237fef7c7df8f2c0c234d0"
+    },
+    "providers/2026-02.parquet": {
+      "bytes": 368962404,
+      "rows": 9368082,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "1fe21a738479659458c6611e2621f04b7bd37d055b311717c45eeb0b2a23765e"
+    },
+    "providers/2026-07-17.parquet": {
+      "bytes": 94702137,
+      "rows": 3401226,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "34be5f141a04e459c453013855625254a785cb1db0694c6febe7d8f5afc58c48"
+    },
+    "providers/2026-07-31.parquet": {
+      "bytes": 6948036,
+      "rows": 465513,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "7ae794dd0d4ff8da6076c2f589c9f8eac202ca7b6eb93b88f064f89a09d14baf"
+    },
+    "providers/2026-11-05.parquet": {
+      "bytes": 1694442,
+      "rows": 84093,
+      "schema": [
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ]
+      ],
+      "sha256": "2e7434e7882fb6f3f6e56b21eaaeb25579b15a16f77d99c5aea642d66d0745ea"
+    },
+    "shared_patients/2015.parquet": {
+      "bytes": 326836396,
+      "rows": 56040265,
+      "schema": [
+        [
+          "npi_a",
+          "VARCHAR"
+        ],
+        [
+          "npi_b",
+          "VARCHAR"
+        ],
+        [
+          "shared_count",
+          "BIGINT"
+        ],
+        [
+          "year",
+          "INTEGER"
+        ]
+      ],
+      "sha256": "19ac430f3809f89712e1eaa3cde07f355c78c40d7ee5ee089f7897782a2aa82a"
+    }
+  },
+  "verification": {
+    "byte_identical": true,
+    "file_count": 18,
+    "fresh_full_runs": 2,
+    "normalization_code_commit": "cf6d520",
+    "row_counts_and_schemas_identical": true,
+    "total_bytes": 1515284454
+  },
+  "versions": {
+    "duckdb": "2.0.0",
+    "numpy": "2.5.4",
+    "pandas": "3.1.1",
+    "python-crfsuite": "0.9.12",
+    "usaddress": "0.5.16"
+  }
+}

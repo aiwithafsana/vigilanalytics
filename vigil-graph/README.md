@@ -1,11 +1,12 @@
 # Vigil National Fraud Graph
 
 Session setup (Gate 0) and acquisition (Phase A / Stage 0) are complete.
-Phase B normalization is implemented and fixture-tested, but its real-data
-acceptance gate is blocked: 333,609 of 9,368,082 NPPES records have empty
-normalized names (3.5611%; the required rate is below 0.5%). No canonical files
-were published by the failed production run. Stages 2–5 are not implemented.
-See [Phase A evidence](docs/PHASE_A.md) and [Phase B gate report](docs/PHASE_B.md).
+Phase B normalizes sealed sources and correctly distinguishes CMS's documented
+NPI/date-only deactivation records from unexplained missing identities. It keeps
+all provider rows and enforces the <0.5% name-quality threshold on records whose
+identity fields are not suppressed by the source. Stages 2–5 are not implemented.
+See [Phase A evidence](docs/PHASE_A.md), [Phase B acceptance evidence](docs/PHASE_B.md),
+and the [NPPES lifecycle policy](docs/NPPES_STATUS_POLICY.md).
 
 ## Setup and commands
 
@@ -21,7 +22,6 @@ python3 -m venv .venv
 .venv/bin/python pipeline.py status
 .venv/bin/python pipeline.py status --verify
 .venv/bin/python pipeline.py --through stage0
-# Currently exits nonzero on the documented NPPES quality gate:
 .venv/bin/python pipeline.py --through stage1
 ```
 
@@ -121,11 +121,12 @@ to `ingest/inputs.py`: normalizers receive DuckDB staging tables. The adapter
 preserves source row order and explicitly transcodes legacy Windows-1252 PECOS
 files only when complete UTF-8 validation fails. It never skips malformed rows.
 
-The canonical tables are `providers`, `addresses`, `exclusions`,
-`billing_summaries`, `ownerships`, and `shared_patients`. A supplementary
-`provider_identifiers` table retains PECOS PAC/associate IDs for future ownership
-joins without reading raw files downstream. Stable record IDs contain the source,
-vintage, filename, and physical CSV row ordinal. No entity resolution runs here.
+The required canonical tables are `providers`, `addresses`, `exclusions`,
+`billing_summaries`, `ownerships`, and `shared_patients`. Supplementary
+`provider_identifiers` preserves PECOS PAC/associate IDs, and `npi_status`
+preserves NPPES deactivation/reactivation evidence. Later joins can operate on
+canonical data. Stable record IDs contain the source, vintage, filename, and
+one-based CSV data-record ordinal. No entity resolution runs here.
 
 Canonical files use `data/canonical/<table>/<vintage>.parquet` (data year for
 billing/shared-patient tables). A missing optional table gets a typed empty
@@ -134,6 +135,18 @@ are NULL. Records are sorted before single-threaded, fixed-row-group Parquet
 writing. Each source prints row counts and missing-value rates, counting empty
 text alongside SQL NULLs. Fixture tests compare hashes from two complete runs.
 
-The NPPES name gate remains **strictly below 0.5%**. The current February vintage
-fails and must be resolved before Phase B can be accepted. The full failed run
-never reached canonical publication or a real-data determinism check.
+The NPPES name gate remains **strictly below 0.5%** on identity records. An NPI
+is exempt only when it has a valid deactivation date and every other source
+column is blank, matching the CMS public-file contract. Such records remain in
+`providers` with empty identity fields and a matching `npi_status` row. The
+unfiltered missing-name rate is reported alongside the eligible population.
+The February vintage has 46 unexplained empty normalized names among 9,034,519
+identity records (0.000509%); 333,563 source-suppressed records are preserved.
+
+Address parsing uses up to four worker processes, each running a pure batch
+function. `VIGIL_ADDRESS_WORKERS=1` selects serial parsing; values from 1 to 8
+are accepted. Only one 10,000-row batch per worker is in flight. The address
+lookup carries narrow ordinals through its large join, then completes wide
+rows in 4,096-row batches under the 3 GB DuckDB limit. Source-row alignment and
+row counts are checked before and after completion. Output sorting makes
+Parquet independent of worker timing; tests compare serial and parallel runs.
