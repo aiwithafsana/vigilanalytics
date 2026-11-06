@@ -1,76 +1,113 @@
-# Phase B — implementation and blocked acceptance gate
+# Phase B — canonical normalization acceptance evidence
 
-Status: incomplete. Implementation and fixture tests are ready for review;
-Phase B has not passed its real-data acceptance gate. No entity resolution or
-later graph stages were started.
+Status: Phase B is complete. Two fresh full production runs produce
+byte-identical outputs. Entity resolution and graph stages have not started.
 
-## Real-data run
+## NPPES source handling resolved
 
-`python pipeline.py --through stage1` read the sealed February 2026 NPPES full
-file and stopped on the prescribed name-quality threshold:
+CMS publishes a special deactivation record containing only an NPI and its
+deactivation date. Counting those deliberately suppressed identities as failed
+provider names caused the original 3.5611% result. The
+[documented lifecycle policy](NPPES_STATUS_POLICY.md) now distinguishes that
+exact source record type while retaining every NPI and source row ID.
 
-| Check | Observed | Required |
-| --- | ---: | ---: |
-| NPPES provider records | 9,368,082 | All sealed source records retained |
-| Empty normalized names | 333,609 | — |
-| Empty normalized-name rate | 3.5611238245% | Strictly below 0.5% |
-| Empty raw names | 333,584 | Reported for diagnosis |
-| Missing entity type | 333,563 | Reported for diagnosis |
-| Missing enumeration date | 333,563 | Reported for diagnosis |
+| Name-quality measure | Observed |
+| --- | ---: |
+| All NPPES rows retained in providers and npi_status | 9,368,082 |
+| Documented NPI/date-only deactivation records | 333,563 |
+| Identity records checked | 9,034,519 |
+| Unexplained empty normalized identity names | 46 |
+| Identity missing-name rate | 0.0005091583% |
+| Required identity missing-name rate | Strictly <0.5% |
+| Unfiltered missing-name rate, still reported | 3.5611238245% |
 
-```text
-ERROR: NPPES name_norm missing rate 3.5611% violates <0.5% gate
+No names are invented, no raw inputs are changed, and no provider rows are
+removed. A nameless record with any other populated source field—including an
+unprojected credential field or reactivation date—still counts against the gate.
+The tests explicitly prove that a 0.5% failure rate fails and a lower rate passes.
+
+## Canonical output from the complete real-data build
+
+| Table | Rows |
+| --- | ---: |
+| providers | 14,549,207 |
+| addresses | 19,608,332 |
+| exclusions | 84,093 |
+| billing_summaries | 1,230,293 |
+| ownerships | 830,197 |
+| shared_patients | 56,040,265 |
+| provider_identifiers | 3,866,739 |
+| npi_status | 9,368,082 |
+
+The build publishes 18 Parquet files, totaling 1,515,284,454 bytes. Required
+canonical schemas are supplemented by the PAC/associate-ID crosswalk and NPPES
+lifecycle table. All are included in determinism verification.
+
+Inputs are the sealed February 2026 NPPES full file, current acquired LEIE,
+paired 2022 Part B provider/service files, the 2015 90-day shared-patient file,
+and both available PECOS vintages. SAM is explicitly optional and absent.
+Normalization retains data years and vintages; acquisition time does not make
+older observations current.
+
+`PHASE_B_HASHES.manifest.json` records the complete file set, SHA-256 hashes,
+byte counts, row counts, schemas, and library versions. `PHASE_B_QUALITY.manifest.json`
+records the per-source missing-value and row-count reports. Raw and canonical
+data remain local and gitignored; only code and acceptance evidence are pushed.
+
+## Determinism and memory
+
+The production command is `python pipeline.py --through stage1`. Two fresh
+processes rebuilt from sealed inputs, including fresh address parsing. The
+comparison passed for every file's SHA-256, byte count, row count, schema, and the
+complete output file set. The source hashes are verified by the ingestion adapter
+before each vintage is exposed to normalization.
+
+The address path processes 6,572,222 distinct structured addresses. Parsing uses
+four processes with one 10,000-row batch per worker in flight. The lookup joins
+narrow ordinals, then completes wide rows in 4,096-row batches. Source alignment
+and final row-count reconciliation guard the mapping. This completes all
+19,608,332 address rows under the 3 GB DuckDB limit; no record-ID-wide global
+update is retained in memory. Final rows are explicitly sorted for publication.
+
+## Acceptance checklist
+
+- [x] All required canonical tables build from real sealed vintages in one command.
+- [x] Names, addresses and phones each have at least eight utility cases.
+- [x] NPPES identity name-quality rate is below 0.5%, with expected suppression separately audited.
+- [x] Every NPPES source record remains represented, with canonical lifecycle evidence.
+- [x] Serial and parallel fixture runs produce byte-identical Parquet.
+- [x] Address completion passes a 200,000-row, wide-ID regression under a 64 MB limit.
+- [x] Source-row misalignment is rejected before address completion.
+- [x] 94 pytest tests pass, including mutation and strict quality-gate failures.
+- [x] Two fresh full production runs produce byte-identical Parquet across all 18 files.
+- [x] Acceptance evidence versioned alongside the implementation.
+
+The implementation remains deterministic batch processing with DuckDB, Python,
+and Parquet. Enforcement authorities remain labels; no ML, entity resolution,
+graph database, service, or public UI is introduced in this phase.
+
+
+To reproduce the complete comparison after installing the pinned dependencies,
+run this from the component root (it performs two complete builds):
+
+```python
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
+
+
+def snapshot():
+    result = {}
+    for path in sorted(Path("data/canonical").rglob("*.parquet")):
+        with path.open("rb") as stream:
+            result[str(path)] = hashlib.file_digest(stream, "sha256").hexdigest()
+    assert result, "No canonical outputs"
+    return result
+
+
+subprocess.run([sys.executable, "pipeline.py", "--through", "stage1"], check=True)
+first = snapshot()
+subprocess.run([sys.executable, "pipeline.py", "--through", "stage1"], check=True)
+assert snapshot() == first
 ```
-
-The source is
-`data/raw/nppes/2026-02/npidata_pfile_20050523-20260208.csv`, protected by its
-vintage manifest. Stable row IDs preserve evidence for every source row.
-The normalizer does not filter away nameless records or invent names to meet
-the threshold. The counts suggest a broad source-data issue; this run did not
-establish the individual records' deactivation status.
-
-No canonical files were published. The temporary database was cleaned up on
-failure; sealed raw inputs remain unchanged. Because the first real run could
-not finish, the full-data byte-identical rerun gate remains unverified.
-
-## Implemented behavior
-
-- Source-specific normalizers for NPPES, LEIE, CMS Part B, shared patients,
-  PECOS, and optional SAM.
-- All required canonical table schemas, plus a PAC/associate-ID crosswalk so
-  later ownership joins can operate entirely on canonical data.
-- usaddress-based address keys, suite/unit collapse, name/credential cleanup,
-  phone normalization, strict source dates, and explicit missing values.
-- Exact closed list of fraud-related authorities: 1128(a)(1), 1128(a)(3), and
-  1128(b)(7). SAM federal exclusions are not presumed HHS program-fraud events.
-- NPPES primary taxonomy/license selection follows the primary switch.
-- Part B summaries retain provider-level total payment and beneficiary counts;
-  top five HCPCS use payment rank with a deterministic code tie-breaker.
-- Shared patient counts use unique beneficiaries (fourth source column), not
-  encounter/pair counts (third column), and retain the 2015 data year.
-- PECOS supports all available enrollment/All_Owners vintages and explicitly
-  transcodes legacy Windows-1252 text without changing raw bytes.
-- Ordered, fixed-row-group Parquet publication and per-source row/missing-rate
-  reports. No wall-clock timestamps are included in canonical data.
-
-## Tests and gate checklist
-
-84 tests pass on Python 3.13.15, including the original 38 acquisition tests.
-Utility coverage: 11 name cases, 11 address cases, 10 phone cases, and 9 fraud
-label cases. The suite builds every canonical table from sealed fixtures,
-checks exact column types and representative values, and verifies identical
-SHA-256 hashes on two complete fixture runs. It also proves that mutated raw
-inputs, unsealed vintages, and the NPPES name-quality failure prevent publication.
-
-- [x] Canonical normalizers and DAG command implemented.
-- [x] At least eight tests each for name, address, and phone utilities.
-- [x] Complete fixture pipeline produces byte-identical Parquet across two runs.
-- [x] Tests prove the missing-name gate remains strict.
-- [ ] Real NPPES missing-name rate below 0.5% — **failed: 3.5611%**.
-- [ ] All canonical tables built from the real sealed inputs — blocked by gate.
-- [ ] Two complete real-data runs produce identical output hashes — blocked.
-- [x] Tested implementation and failure evidence committed for review.
-
-Phase B can resume after an appropriate NPPES vintage is acquired or an
-explicit source-data policy is agreed with the user. The build spec's rule is
-to stop when a gate cannot pass, rather than weaken it; this is that stop.
