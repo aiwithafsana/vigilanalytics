@@ -1,0 +1,234 @@
+{
+  "identical_across_two_fresh_runs": true,
+  "reports": [
+    {
+      "null_rates": {
+        "entity_type": 0.03560632795485778,
+        "enumeration_date": 0.03560632795485778,
+        "first": 0.23787355832282425,
+        "last": 0.238006990118148,
+        "license_no": 0.37416314246608856,
+        "license_state": 0.34335085879905836,
+        "name_norm": 0.035611238244925694,
+        "name_raw": 0.035608569609019224,
+        "npi": 0.0,
+        "org_name_norm": 0.797755613155393,
+        "phone_norm": 0.036046866370298636,
+        "record_id": 0.0,
+        "source": 0.0,
+        "specialty_code": 0.03560632795485778,
+        "specialty_desc": 1.0,
+        "vintage": 0.0
+      },
+      "rows": 9368082,
+      "source": "nppes",
+      "table": "providers",
+      "vintage": "2026-02"
+    },
+    {
+      "documented_suppressed_records": 333563,
+      "identity_records": 9034519,
+      "missing_identity_name_rate": 5.091582628804035e-06,
+      "missing_identity_names": 46,
+      "source": "nppes",
+      "source_rows": 9368082,
+      "threshold": 0.005,
+      "unfiltered_name_missing_rate": 0.035611238244925694,
+      "vintage": "2026-02"
+    },
+    {
+      "null_rates": {
+        "business_name": 0.9587837275397476,
+        "excl_authority": 0.0,
+        "excl_date": 0.0,
+        "excl_type": 0.0,
+        "first": 0.04125194724887922,
+        "fraud_related": 0.0,
+        "last": 0.041275730441297134,
+        "npi": 0.8938793954312487,
+        "record_id": 0.0,
+        "rein_date": 1.0,
+        "vintage": 0.0,
+        "waiver_date": 0.9999762168075821
+      },
+      "rows": 84093,
+      "source": "leie",
+      "table": "exclusions",
+      "vintage": "2026-11-05"
+    },
+    {
+      "null_rates": {
+        "entity_type": 0.0,
+        "enumeration_date": 1.0,
+        "first": 0.04125194724887922,
+        "last": 0.041275730441297134,
+        "license_no": 1.0,
+        "license_state": 1.0,
+        "name_norm": 0.0,
+        "name_raw": 0.0,
+        "npi": 0.8938793954312487,
+        "org_name_norm": 0.9587837275397476,
+        "phone_norm": 1.0,
+        "record_id": 0.0,
+        "source": 0.0,
+        "specialty_code": 1.0,
+        "specialty_desc": 0.04843447135909053,
+        "vintage": 0.0
+      },
+      "rows": 84093,
+      "source": "leie",
+      "table": "providers",
+      "vintage": "2026-11-05"
+    },
+    {
+      "null_rates": {
+        "npi": 0.0,
+        "specialty": 0.0,
+        "state": 0.0,
+        "top_hcpcs": 0.06617935727505561,
+        "total_payment": 0.0,
+        "total_services": 0.0,
+        "unique_beneficiaries": 0.0,
+        "year": 0.0
+      },
+      "rows": 1230293,
+      "source": "cms_part_b",
+      "table": "billing_summaries",
+      "vintage": "2022"
+    },
+    {
+      "null_rates": {
+        "entity_type": 0.0,
+        "enumeration_date": 1.0,
+        "first": 0.05257284240420778,
+        "last": 0.05270370554006241,
+        "license_no": 1.0,
+        "license_state": 1.0,
+        "name_norm": 8.128145084138494e-07,
+        "name_raw": 0.0,
+        "npi": 0.0,
+        "org_name_norm": 0.9474572317326035,
+        "phone_norm": 1.0,
+        "record_id": 0.0,
+        "source": 0.0,
+        "specialty_code": 1.0,
+        "specialty_desc": 0.0,
+        "vintage": 0.0
+      },
+      "rows": 1230293,
+      "source": "cms_part_b",
+      "table": "providers",
+      "vintage": "2022"
+    },
+    {
+      "null_rates": {
+        "npi_a": 0.0,
+        "npi_b": 0.0,
+        "shared_count": 0.0,
+        "year": 0.0
+      },
+      "rows": 56040265,
+      "source": "shared_patients",
+      "table": "shared_patients",
+      "vintage": "2015"
+    },
+    {
+      "null_rates": {
+        "effective_date": 0.0,
+        "org_npi_or_pac": 0.0,
+        "owner_name_norm": 0.0,
+        "owner_role": 0.0,
+        "pct_ownership": 0.5038750305855688,
+        "record_id": 0.0,
+        "vintage": 0.0
+      },
+      "rows": 388255,
+      "source": "pecos",
+      "table": "ownerships",
+      "vintage": "2026-07-17"
+    },
+    {
+      "null_rates": {
+        "entity_type": 0.0,
+        "enumeration_date": 1.0,
+        "first": 0.1514045229573101,
+        "last": 0.15153271202795698,
+        "license_no": 1.0,
+        "license_state": 1.0,
+        "name_norm": 5.880232598480665e-07,
+        "name_raw": 0.0,
+        "npi": 0.11415148537615553,
+        "org_name_norm": 0.8486160578567846,
+        "phone_norm": 1.0,
+        "record_id": 0.0,
+        "source": 0.0,
+        "specialty_code": 0.11415148537615553,
+        "specialty_desc": 0.11415148537615553,
+        "vintage": 0.0
+      },
+      "rows": 3401226,
+      "source": "pecos",
+      "table": "providers",
+      "vintage": "2026-07-17"
+    },
+    {
+      "null_rates": {
+        "effective_date": 0.0,
+        "org_npi_or_pac": 0.0,
+        "owner_name_norm": 0.0582089957505736,
+        "owner_role": 0.0,
+        "pct_ownership": 0.650463182951609,
+        "record_id": 0.0,
+        "vintage": 0.0
+      },
+      "rows": 441942,
+      "source": "pecos",
+      "table": "ownerships",
+      "vintage": "2026-07-31"
+    },
+    {
+      "null_rates": {
+        "entity_type": 0.0,
+        "enumeration_date": 1.0,
+        "first": 0.33399496899119896,
+        "last": 0.33400570982980066,
+        "license_no": 1.0,
+        "license_state": 1.0,
+        "name_norm": 0.05526161460582196,
+        "name_raw": 0.05526161460582196,
+        "npi": 0.9493655386637967,
+        "org_name_norm": 0.7212666456146231,
+        "phone_norm": 1.0,
+        "record_id": 0.0,
+        "source": 0.0,
+        "specialty_code": 0.9493655386637967,
+        "specialty_desc": 0.9493655386637967,
+        "vintage": 0.0
+      },
+      "rows": 465513,
+      "source": "pecos",
+      "table": "providers",
+      "vintage": "2026-07-31"
+    },
+    {
+      "null_rates": {
+        "addr_key": 0.0065751130692809565,
+        "addr_raw": 0.0,
+        "addr_type": 0.0,
+        "city": 0.0,
+        "lat": 1.0,
+        "lon": 1.0,
+        "npi": 0.012365508703137013,
+        "record_id": 0.0,
+        "source": 0.0,
+        "state": 2.050148885687982e-05,
+        "vintage": 0.0,
+        "zip5": 0.0015623970463168413
+      },
+      "rows": 19608332,
+      "source": "all",
+      "table": "addresses",
+      "vintage": "all"
+    }
+  ]
+}

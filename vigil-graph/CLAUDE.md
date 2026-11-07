@@ -1,0 +1,11 @@
+# Vigil Fraud Graph — invariants (do not violate)
+- Data is immutable: raw sources live in data/raw/<source>/<vintage>/, never edited, never deleted. New data = new vintage folder.
+- Every raw file has a SHA-256 recorded in its vintage manifest.json at download time.
+- All transformations are pure: same inputs + same code = byte-identical outputs. No wall-clock timestamps inside output data (manifests only).
+- Downstream code reads ONLY canonical Parquet tables in data/canonical/. Nothing outside ingest/ touches raw files.
+- No graph database. Edges are Parquet tables queried in DuckDB; per-cluster analysis uses rustworkx on filtered subgraphs.
+- Entity resolution runs BEFORE edge construction. Edges connect entity_ids, never raw record ids.
+- Every edge row carries `type` and `evidence` (the source record key that justifies it).
+- LEIE/enforcement fields are labels and hard-rule inputs, NEVER ML features.
+- Run `pytest` before and after every change; tests must stay green. Commit after every green milestone.
+- Python 3.11+, DuckDB, Polars or pandas, usaddress, jellyfish, rustworkx. pip install only what's listed per phase.
