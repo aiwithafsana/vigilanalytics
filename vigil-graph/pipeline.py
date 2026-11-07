@@ -42,6 +42,7 @@ def _assignments(values: list[str]) -> dict[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--through', choices=[f'stage{i}' for i in range(6)])
+    parser.add_argument('--review', type=Path, help='Stage 2 human review attestation JSON')
     sub = parser.add_subparsers(dest='command')
     status = sub.add_parser('status', help='Print latest vintage and days since acquisition')
     status.add_argument('--verify', action='store_true', help='Rehash complete vintages (may read many GB)')
@@ -53,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             action.add_argument('--file', action='append', required=True, metavar='NAME=PATH')
             action.add_argument('--source-url', action='append', default=[], metavar='NAME=HTTPS_URL')
     args = parser.parse_args(argv)
+    if args.review and args.through != 'stage2':
+        parser.error('--review applies only to --through stage2')
     if args.through and args.command:
         parser.error('Choose either --through or a subcommand')
     try:
@@ -64,13 +67,16 @@ def main(argv: list[str] | None = None) -> int:
             import_files(args.source, args.vintage,
                          {k: Path(v) for k, v in _assignments(args.file).items()},
                          source_urls=_assignments(args.source_url))
+        elif args.through == 'stage2':
+            from resolve.run import run
+            run(review_path=args.review)
         elif args.through == 'stage1':
             from normalize.run import run
             run()
         elif args.through == 'stage0':
             run_stage0()
         elif args.through:
-            raise AcquisitionError(f'{args.through} is not implemented; stop after Phase B. No later stage was run.')
+            raise AcquisitionError(f'{args.through} is not implemented; stop after Phase C. No later stage was run.')
         else:
             parser.print_help()
             return 2
