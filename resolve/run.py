@@ -7,7 +7,7 @@ from resolve import blocking, clustering, scoring, survivorship
 from resolve.config import ResolutionConfig
 from resolve.storage import PROJECT_ROOT, connect, data_root, write_json
 from resolve import eval as evaluation
-from resolve.storage import load
+from resolve.storage import load, snapshot
 
 
 def run(canonical=None, output=None, config=None, review_path=None, evaluate_sample=True):
@@ -25,6 +25,8 @@ def run(canonical=None, output=None, config=None, review_path=None, evaluate_sam
         build.mkdir()
         with connect(Path(tmp)/'stage2.duckdb',config) as c:
             print('Stage 2: loading canonical records',flush=True)
+            inputs=snapshot(canonical)
+            write_json(build/'canonical_inputs.manifest.json',inputs)
             load(c,canonical)
             try:
                 if evaluate_sample:
@@ -36,9 +38,15 @@ def run(canonical=None, output=None, config=None, review_path=None, evaluate_sam
                 scoring.score(c,build)
                 clustering.cluster(c,build,config)
                 survivorship.publish(c,build)
+                if snapshot(canonical)!=inputs:
+                    raise clustering.ResolutionGateError('Canonical inputs changed during resolution')
                 if evaluate_sample:
+                    if review_path is not None:
+                        review=evaluation.require_review(build,review_path)
+                        evaluation.apply_corrections(c,review)
                     evaluation.evaluate(c,build,config)
-                    evaluation.require_review(build,review_path)
+                    if review_path is None:
+                        evaluation.require_review(build,review_path)
             except clustering.ResolutionGateError as error:
                 if not (build/'gate.json').exists():
                     write_json(build/'gate.json',{'status':'blocked','reason':str(error),'policy':config.as_dict(),

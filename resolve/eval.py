@@ -1,5 +1,4 @@
 """Reproducible weak labels plus an explicit 30-pair human review gate."""
-import csv
 import hashlib
 import json
 from pathlib import Path
@@ -117,4 +116,21 @@ def require_review(output, review_path):
         len(review.get('pair_ids',[]))!=30 or not review.get('reviewer') or
         review.get('confirmed') is not True):
         raise ResolutionGateError('Human review must attest to the exact sample and all 30 pair IDs')
+    corrections=review.get('corrections',[])
+    seen=set()
+    for correction in corrections:
+        pair=correction.get('pair_id')
+        if (pair not in request['pair_ids'] or pair in seen or
+            type(correction.get('label')) is not int or correction['label'] not in (0,1) or
+            not correction.get('reason')):
+            raise ResolutionGateError('Corrections require a reviewed pair ID, binary label and reason')
+        seen.add(pair)
     write_json(Path(output)/'human_review_attestation.json',review)
+    return review
+
+
+def apply_corrections(c,review):
+    for correction in review.get('corrections',[]):
+        c.execute('UPDATE labeled_sample SET label=?,label_basis=? WHERE pair_id=?',
+                  [correction['label'],'Human correction: '+correction['reason'],correction['pair_id']])
+

@@ -261,3 +261,22 @@ def test_evaluation_measures_transitive_clustering_and_false_merges(tmp_path):
     metrics=json.loads((tmp_path/'evaluation.json').read_text())
     assert metrics['tp']==metrics['fp']==metrics['fn']==1
     assert metrics['precision']==metrics['recall']==.5
+
+
+def test_human_corrections_are_applied_without_changing_original_sample(tmp_path):
+    request={'sample_sha256':'abc','pair_ids':[f'p{i}' for i in range(30)]}
+    (tmp_path/'review_request.json').write_text(json.dumps(request))
+    review=dict(request,reviewer='synthetic fixture',confirmed=True,
+                corrections=[dict(pair_id='p0',label=0,reason='different people in fixture')])
+    path=tmp_path/'review.json';path.write_text(json.dumps(review))
+    validated=evaluation.require_review(tmp_path,path)
+    with duckdb.connect() as c:
+        c.execute("CREATE TABLE labeled_sample(pair_id VARCHAR,label INTEGER,label_basis VARCHAR)")
+        c.execute("INSERT INTO labeled_sample VALUES ('p0',1,'generated')")
+        evaluation.apply_corrections(c,validated)
+        assert c.execute('SELECT label,label_basis FROM labeled_sample').fetchall()==[(0,'Human correction: different people in fixture')]
+    assert json.loads((tmp_path/'review_request.json').read_text())==request
+    review['corrections'][0]['pair_id']='unreviewed'
+    path.write_text(json.dumps(review))
+    with pytest.raises(clustering.ResolutionGateError,match='Corrections require'):
+        evaluation.require_review(tmp_path,path)

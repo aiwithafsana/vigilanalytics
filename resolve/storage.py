@@ -1,4 +1,5 @@
 """Stage 2 reads only canonical Parquet. Scratch SQL is disk backed."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,3 +54,13 @@ def copy(c, query, path):
 
 def write_json(path, value):
     Path(path).write_text(json.dumps(value, sort_keys=True, indent=2) + '\n')
+
+
+def snapshot(canonical):
+    result={}
+    for table in ('providers','addresses'):
+        for path in sorted((Path(canonical)/table).glob('*.parquet')):
+            with path.open('rb') as stream:
+                digest=hashlib.file_digest(stream,'sha256').hexdigest()
+            result[str(path.relative_to(canonical))]={'sha256':digest,'bytes':path.stat().st_size}
+    return result

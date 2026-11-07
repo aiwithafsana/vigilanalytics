@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             action.add_argument('--file', action='append', required=True, metavar='NAME=PATH')
             action.add_argument('--source-url', action='append', default=[], metavar='NAME=HTTPS_URL')
     args = parser.parse_args(argv)
+    if args.review and args.through != 'stage2':
+        parser.error('--review applies only to --through stage2')
     if args.through and args.command:
         parser.error('Choose either --through or a subcommand')
     try:

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from resolve.storage import copy, write_json
+from resolve.review import write_alarm_report
 
 
 class ResolutionGateError(ValueError):
@@ -34,6 +35,7 @@ def preflight(c, output, config):
         copy(c, 'SELECT * FROM npi_alarms ORDER BY npi', output/'npi_alarms.parquet')
         copy(c, '''SELECT a.*, n.* EXCLUDE(npi) FROM npi_alarms a JOIN nodes n USING(npi)
             ORDER BY npi, record_id''', output/'cluster_review.parquet')
+        write_alarm_report(c,output)
         write_json(output/'gate.json', {'status':'blocked', 'reason':'exact_npi_preflight',
             'npi_groups':counts[0], 'oversized_groups':counts[1], 'type_conflict_groups':counts[2],
             'policy':config.as_dict(), 'national_clustering_completed':False})
