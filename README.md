@@ -4,8 +4,11 @@ Session setup (Gate 0) and acquisition (Phase A / Stage 0) are complete.
 Phase B normalizes sealed sources and correctly distinguishes CMS's documented
 NPI/date-only deactivation records from unexplained missing identities. It keeps
 all provider rows and enforces the <0.5% name-quality threshold on records whose
-identity fields are not suppressed by the source. Stages 2–5 are not implemented.
+identity fields are not suppressed by the source. Stage 2 is implemented and fixture-tested; its national acceptance is halted
+on 16 oversized exact-NPI groups and 593 person/organization conflicts. Stages
+3–5 are not implemented.
 See [Phase A evidence](docs/PHASE_A.md), [Phase B acceptance evidence](docs/PHASE_B.md),
+[Phase C status and repair plan](docs/PHASE_C.md),
 and the [NPPES lifecycle policy](docs/NPPES_STATUS_POLICY.md).
 
 ## Setup and commands
@@ -23,6 +26,7 @@ python3 -m venv .venv
 .venv/bin/python pipeline.py status --verify
 .venv/bin/python pipeline.py --through stage0
 .venv/bin/python pipeline.py --through stage1
+.venv/bin/python pipeline.py --through stage2
 ```
 
 For this checkout, the existing environment is `../../work/venv` instead of
@@ -40,7 +44,9 @@ source. All four required sources must be present. Missing optional sources are
 reported explicitly. Acquire new vintages with `fetch` or `import` before running
 the stage. `--through stage1` verifies all sealed vintages before consuming them,
 enforces quality gates, and publishes only after all normalization succeeds.
-Later `--through` targets fail without running partial later stages.
+`--through stage2` consumes canonical Parquet, runs exact-NPI preflight, and
+stops on identity alarms or missing human review. It publishes accepted entities
+only after all Stage 2 gates pass. Later targets fail without running them.
 
 ## Acquisition
 

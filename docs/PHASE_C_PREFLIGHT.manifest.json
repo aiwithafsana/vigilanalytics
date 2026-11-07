@@ -1,0 +1,296 @@
+{
+  "artifacts": {
+    "canonical_inputs.manifest.json": {
+      "bytes": 1432,
+      "sha256": "67b46348624c809898d84672755001936a16aceed76aa966d962f08ea66b6d60"
+    },
+    "cluster_review.csv": {
+      "bytes": 755496,
+      "sha256": "9330ebac4af6e7be736bbed79ed565acfb5c38c19b1061ca468d7ddd08a00e34"
+    },
+    "cluster_review.md": {
+      "bytes": 3189,
+      "sha256": "50a91315bf961765a166980770d08596c126794ff4c0bca641dd6d2f1f64c527"
+    },
+    "cluster_review.parquet": {
+      "bytes": 105646,
+      "rows": 3314,
+      "schema": [
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "records",
+          "BIGINT"
+        ],
+        [
+          "known_types",
+          "BIGINT"
+        ],
+        [
+          "oversized",
+          "BOOLEAN"
+        ],
+        [
+          "type_conflict",
+          "BOOLEAN"
+        ],
+        [
+          "node_id",
+          "BIGINT"
+        ],
+        [
+          "record_id",
+          "VARCHAR"
+        ],
+        [
+          "source",
+          "VARCHAR"
+        ],
+        [
+          "vintage",
+          "VARCHAR"
+        ],
+        [
+          "entity_type",
+          "INTEGER"
+        ],
+        [
+          "name_raw",
+          "VARCHAR"
+        ],
+        [
+          "name_norm",
+          "VARCHAR"
+        ],
+        [
+          "first",
+          "VARCHAR"
+        ],
+        [
+          "last",
+          "VARCHAR"
+        ],
+        [
+          "org_name_norm",
+          "VARCHAR"
+        ],
+        [
+          "specialty_code",
+          "VARCHAR"
+        ],
+        [
+          "specialty_desc",
+          "VARCHAR"
+        ],
+        [
+          "license_no",
+          "VARCHAR"
+        ],
+        [
+          "license_state",
+          "VARCHAR"
+        ],
+        [
+          "phone_norm",
+          "VARCHAR"
+        ],
+        [
+          "enumeration_date",
+          "DATE"
+        ],
+        [
+          "kind",
+          "UTINYINT"
+        ]
+      ],
+      "sha256": "0abf60e4322a090d28bc05a09a684bb1fdf33d329c50931c3036e4f0c1ff17f7"
+    },
+    "gate.json": {
+      "bytes": 337,
+      "sha256": "0ead4535b102d9c271c2d7835d891ad58384c2fcbe640802eabd91fd7eb18a96"
+    },
+    "human_review.md": {
+      "bytes": 4267,
+      "sha256": "fae6ec859bfbb1249dd9e843829aa5dfbd618ebb07c196becd6ed86596926ec6"
+    },
+    "labeled_pairs.csv": {
+      "bytes": 61474,
+      "sha256": "300ad86d10dce83e47761c2a29b32c513e030d7ac9c99f88d3a7ae8282167096"
+    },
+    "labeled_pairs.parquet": {
+      "bytes": 21814,
+      "rows": 200,
+      "schema": [
+        [
+          "pair_id",
+          "VARCHAR"
+        ],
+        [
+          "left_id",
+          "VARCHAR"
+        ],
+        [
+          "right_id",
+          "VARCHAR"
+        ],
+        [
+          "label",
+          "INTEGER"
+        ],
+        [
+          "label_basis",
+          "VARCHAR"
+        ],
+        [
+          "matched_city",
+          "VARCHAR"
+        ],
+        [
+          "left_name",
+          "VARCHAR"
+        ],
+        [
+          "right_name",
+          "VARCHAR"
+        ],
+        [
+          "left_source",
+          "VARCHAR"
+        ],
+        [
+          "right_source",
+          "VARCHAR"
+        ],
+        [
+          "left_npi",
+          "VARCHAR"
+        ],
+        [
+          "right_npi",
+          "VARCHAR"
+        ],
+        [
+          "left_city",
+          "VARCHAR"
+        ],
+        [
+          "right_city",
+          "VARCHAR"
+        ]
+      ],
+      "sha256": "a2723c0cc2494039d5a2c1f4e03b8e90a6a4952f6323b4799835079959903e40"
+    },
+    "npi_alarms.csv": {
+      "bytes": 15901,
+      "sha256": "991e2a23c98ff7ec055ca81a2fc94542d45cae8611cc53a5120f44407c984bea"
+    },
+    "npi_alarms.parquet": {
+      "bytes": 4190,
+      "rows": 609,
+      "schema": [
+        [
+          "npi",
+          "VARCHAR"
+        ],
+        [
+          "records",
+          "BIGINT"
+        ],
+        [
+          "known_types",
+          "BIGINT"
+        ],
+        [
+          "oversized",
+          "BOOLEAN"
+        ],
+        [
+          "type_conflict",
+          "BOOLEAN"
+        ]
+      ],
+      "sha256": "4e63440d57927ac3c32548cb464a9269b507a06170958e70bf397d6dfb662476"
+    },
+    "review_request.json": {
+      "bytes": 2418,
+      "sha256": "1c4ca628dc13af44eebd289543da14914127f84e320d8754812ed981721988cf"
+    }
+  },
+  "canonical_inputs": {
+    "addresses/2022.parquet": {
+      "bytes": 41501633,
+      "sha256": "61c27bd8c6bcc26365c3b94a698b5da08e479af2a6f60ac6339a1e33738710a6"
+    },
+    "addresses/2026-02.parquet": {
+      "bytes": 537614276,
+      "sha256": "a213d71644038d887afc63f6ac2e0c35723e6069517cb8e9c24fc35661f98b6e"
+    },
+    "addresses/2026-07-17.parquet": {
+      "bytes": 2092278,
+      "sha256": "9506b23beb0ad169058b5a5743359903818fc9fdeda665699193e22b59927180"
+    },
+    "addresses/2026-07-31.parquet": {
+      "bytes": 2522094,
+      "sha256": "74425b247f2a63497d7e0c935f2762d4d9da33dafb35e3ea4462380c9f653c77"
+    },
+    "addresses/2026-11-05.parquet": {
+      "bytes": 2860226,
+      "sha256": "9b3c940f5341636c0c50ecb8bfe7ef53f03a9c0753bad6a273841ae2bede397b"
+    },
+    "providers/2022.parquet": {
+      "bytes": 33905037,
+      "sha256": "049f98c4aa53ae676f590de0fbd771c0313b9ace17237fef7c7df8f2c0c234d0"
+    },
+    "providers/2026-02.parquet": {
+      "bytes": 368962404,
+      "sha256": "1fe21a738479659458c6611e2621f04b7bd37d055b311717c45eeb0b2a23765e"
+    },
+    "providers/2026-07-17.parquet": {
+      "bytes": 94702137,
+      "sha256": "34be5f141a04e459c453013855625254a785cb1db0694c6febe7d8f5afc58c48"
+    },
+    "providers/2026-07-31.parquet": {
+      "bytes": 6948036,
+      "sha256": "7ae794dd0d4ff8da6076c2f589c9f8eac202ca7b6eb93b88f064f89a09d14baf"
+    },
+    "providers/2026-11-05.parquet": {
+      "bytes": 1694442,
+      "sha256": "2e7434e7882fb6f3f6e56b21eaaeb25579b15a16f77d99c5aea642d66d0745ea"
+    }
+  },
+  "code_commit": "f7e394e570f048c4c00c674aa09aada322ab7b8c",
+  "gate": {
+    "national_clustering_completed": false,
+    "npi_groups": 609,
+    "oversized_groups": 16,
+    "policy": {
+      "batch_size": 50000,
+      "max_block_pairs": 2000000,
+      "max_cluster_records": 50,
+      "memory_limit": "3GB",
+      "threshold": 0.85
+    },
+    "reason": "exact_npi_preflight",
+    "status": "blocked",
+    "type_conflict_groups": 593
+  },
+  "human_review": "pending",
+  "national_precision": null,
+  "national_recall": null,
+  "pytest_passed": 118,
+  "reproducibility": {
+    "identical_artifacts": [
+      "cluster_review.parquet",
+      "human_review.md",
+      "labeled_pairs.csv",
+      "labeled_pairs.parquet",
+      "npi_alarms.parquet",
+      "review_request.json"
+    ],
+    "runs": 2,
+    "scope": "National review sample and preflight alarm artifacts only; no accepted national entities were produced."
+  },
+  "status": "blocked"
+}
